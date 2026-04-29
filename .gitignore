@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+*.zip
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.tfvars
+!*.tfvars.example
+
+# Nested clone (use root repo + origin only)
+/TerraSketch/

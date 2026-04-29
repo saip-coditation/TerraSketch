@@ -7,6 +7,7 @@ from typing import Optional
 
 from app.core.config import get_settings
 from app.db.schemas import ClaudeOutput
+from app.services.azure_openai_service import AzureOpenAIError
 from app.services.claude_service import ClaudeServiceError
 from app.services.gemini_service import GeminiServiceError
 
@@ -63,6 +64,20 @@ def generate_terraform(
                 return mock_generate(**common_args)
             raise LLMServiceError(str(exc)) from exc
 
+    if llm_provider == "azure":
+        try:
+            from app.services.azure_openai_service import generate_terraform as azure_generate
+
+            return azure_generate(**common_args)
+        except AzureOpenAIError as exc:
+            if exc.quota_exhausted and fallback_provider == "mock":
+                logger.warning("Azure OpenAI quota/rate limited; falling back to mock provider")
+                from app.services.mock_service import generate_terraform as mock_generate
+
+                return mock_generate(**common_args)
+            raise LLMServiceError(str(exc)) from exc
+
     raise LLMServiceError(
-        f"Unsupported LLM_PROVIDER='{settings.LLM_PROVIDER}'. Use anthropic, gemini, or mock."
+        f"Unsupported LLM_PROVIDER='{settings.LLM_PROVIDER}'. "
+        "Use anthropic, gemini, azure, or mock."
     )

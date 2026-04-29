@@ -12,6 +12,11 @@ from app.db import models
 from app.db.schemas import GenerateRequest, GenerateResponse
 from app.services.llm_service import LLMServiceError, generate_terraform
 from app.services.terraform_parser import TerraformParseError
+from app.services.aws_microservice_canonical import (
+    canonical_resources_list,
+    maybe_replace_with_canonical_microservice,
+)
+from app.services.terraform_postprocess import postprocess_generated_files
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -59,6 +64,35 @@ def post_generate(
             ai_output.provider,
             payload.cloud_provider,
         )
+
+    files, post_notes = postprocess_generated_files(
+        ai_output.files,
+        cloud_provider=payload.cloud_provider,
+    )
+    new_assumptions = list(ai_output.assumptions or [])
+    new_assumptions.extend(post_notes)
+
+    files, canon_notes = maybe_replace_with_canonical_microservice(
+        files=files,
+        cloud_provider=payload.cloud_provider,
+        resources_identified=list(ai_output.resources_identified or []),
+        environment=payload.environment,
+    )
+    new_assumptions.extend(canon_notes)
+
+    updates: dict = {"files": files, "assumptions": new_assumptions}
+    if canon_notes:
+        updates["resources_identified"] = canonical_resources_list()
+        updates["usage_instructions"] = (
+            "Canonical template applied for full diagram fidelity. "
+            "Create terraform.tfvars with: region, name_prefix, vpc_id, public_subnet_ids, "
+            "private_subnet_ids, s3_bucket_name, container_image, db_password. "
+            "CloudFront default behavior → S3 (OAC). Paths matching api_path_pattern (default /api/*) "
+            "→ ALB → ECS. ElastiCache and Aurora are reachable only from ECS security groups. "
+            "Run: terraform init && terraform plan."
+        )
+
+    ai_output = ai_output.model_copy(update=updates)
 
     record = models.Generation(
         session_id=payload.session_id,

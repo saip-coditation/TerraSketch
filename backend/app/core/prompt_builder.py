@@ -29,6 +29,14 @@ RULES:
 9. Never produce placeholder or pseudo-code — all output must be real, working Terraform
 10. If the diagram is ambiguous, make reasonable assumptions and document them in a comment block at the top of main.tf
 
+AWS DIAGRAM ACCURACY (when provider is aws — e.g. CloudFront + S3 + ALB + ECS + data tier):
+11. Declare `provider "aws"` ONLY in providers.tf — never duplicate a `provider "aws"` block in main.tf.
+12. When CloudFront connects to BOTH Amazon S3 (static) AND an Application Load Balancer (dynamic/API), model TWO CloudFront origins (S3 + ALB) and the correct cache behaviors / default behavior so both paths work; do not model only S3 if the diagram shows both arrows from CloudFront.
+13. Do NOT use legacy `acl` on `aws_s3_bucket` for public static hosting with modern AWS provider defaults. Prefer S3 bucket ownership controls, `aws_s3_bucket_public_access_block`, CloudFront Origin Access Control (OAC), and an `aws_s3_bucket_policy` granting `s3:GetObject` to the CloudFront distribution.
+14. For Amazon Aurora, include `aws_rds_cluster` AND at least one `aws_rds_cluster_instance` (writer); add readers only if the diagram implies them.
+15. For Amazon ElastiCache in a VPC, place clusters in private subnets and attach security groups allowing ingress ONLY from the ECS task/service security group on the cache port (e.g. 6379 for Redis).
+16. For ECS Fargate behind an ALB, wire `load_balancer` on `aws_ecs_service`, target group, listener, and security groups so ALB can reach task ENIs on the container port.
+
 Think step by step: first list all resources you see, then map their relationships, then write the Terraform.
 
 If you identify repeated patterns (e.g., multiple identical EC2 instances, multiple subnets), generate a reusable Terraform module instead of repeating resource blocks where appropriate.

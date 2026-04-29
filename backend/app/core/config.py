@@ -28,6 +28,13 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "anthropic"
     LLM_FALLBACK_PROVIDER: str = "mock"
 
+    # Azure OpenAI (Microsoft Foundry): GPT-4o deployment — use your deployment *name*
+    AZURE_OPENAI_ENDPOINT: str = ""
+    AZURE_OPENAI_API_KEY: str = ""
+    AZURE_OPENAI_DEPLOYMENT: str = ""
+    # See https://learn.microsoft.com/azure/ai-services/openai/reference — pick one your region supports.
+    AZURE_OPENAI_API_VERSION: str = "2024-10-21"
+
     DATABASE_URL: str = "sqlite:///./terrasketch.db"
 
     ALLOWED_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
@@ -38,9 +45,14 @@ class Settings(BaseSettings):
     def allowed_origins_list(self) -> List[str]:
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
 
+    @field_validator("AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_DEPLOYMENT", "AZURE_OPENAI_API_VERSION")
+    @classmethod
+    def _strip_azure(cls, value: str) -> str:
+        return value.strip()
+
     @field_validator("ANTHROPIC_MODEL", "GEMINI_MODEL", "LLM_PROVIDER", "LLM_FALLBACK_PROVIDER")
     @classmethod
-    def _strip_model(cls, value: str) -> str:
+    def _strip_lower(cls, value: str) -> str:
         return value.strip().lower()
 
 

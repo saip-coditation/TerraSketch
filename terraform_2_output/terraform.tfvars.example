@@ -1,0 +1,4 @@
+# Copy to terraform.tfvars (do not commit secrets)
+# name_prefix = "simple-web"
+# web_ami     = "ami-xxxxxxxx" # Amazon Linux 2 in us-east-1 — look up with: aws ec2 describe-images ...
+# db_password = "change-me-strong-password"
