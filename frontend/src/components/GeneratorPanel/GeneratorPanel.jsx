@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import ProviderSelector from "./ProviderSelector.jsx";
 import UploadZone from "./UploadZone.jsx";
 import Button from "../shared/Button.jsx";
 import LoadingSpinner from "../shared/LoadingSpinner.jsx";
+import { useVoiceToText } from "../../hooks/useVoiceToText.js";
 
 const ENVIRONMENTS = [
   { id: "dev", label: "Dev" },
@@ -15,25 +16,54 @@ const TABS = [
   { id: "text", label: "Describe in Text" },
 ];
 
+const PRESETS = [
+  { id: "auto", label: "Auto", description: "Infer everything from your input" },
+  { id: "simple_web", label: "Simple web", description: "VPC · ALB · EC2 · RDS" },
+  { id: "microservice", label: "Microservice", description: "CloudFront · ECS · data tier" },
+  { id: "serverless", label: "Serverless", description: "API GW · Lambda · DynamoDB/S3" },
+];
+
 export default function GeneratorPanel({ onSubmit, loading }) {
   const [provider, setProvider] = useState("aws");
   const [environment, setEnvironment] = useState("dev");
+  const [architecturePreset, setArchitecturePreset] = useState("auto");
   const [tab, setTab] = useState("image");
   const [file, setFile] = useState(null);
   const [text, setText] = useState("");
+  const [correctionNote, setCorrectionNote] = useState("");
+  const [compareGenerationId, setCompareGenerationId] = useState(() =>
+    typeof sessionStorage !== "undefined"
+      ? sessionStorage.getItem("terrasketch_last_generation_id") || ""
+      : ""
+  );
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [error, setError] = useState(null);
+  const voice = useVoiceToText(setText);
+
+  useEffect(() => {
+    if (tab !== "text") {
+      voice.stop();
+      voice.setHint(null);
+    }
+  }, [tab, voice.stop, voice.setHint]);
 
   const isImageOnlyFile = file?.type?.startsWith("image/");
   const canSubmit =
     !loading &&
-    ((tab === "image" && isImageOnlyFile) ||
-      (tab === "text" && text.trim().length > 0));
+    ((tab === "image" && isImageOnlyFile) || (tab === "text" && text.trim().length > 0));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
 
     try {
+      const base = {
+        cloud_provider: provider,
+        environment,
+        architecture_preset: architecturePreset,
+        correction_note: correctionNote.trim() || null,
+        compare_generation_id: compareGenerationId.trim() || null,
+      };
       if (tab === "image") {
         if (!file) throw new Error("Please upload a diagram first");
         if (!isImageOnlyFile) {
@@ -42,8 +72,7 @@ export default function GeneratorPanel({ onSubmit, loading }) {
           );
         }
         await onSubmit({
-          cloud_provider: provider,
-          environment,
+          ...base,
           input_type: "image",
           image_base64: file.dataUrl,
           text_description: null,
@@ -51,8 +80,7 @@ export default function GeneratorPanel({ onSubmit, loading }) {
       } else {
         if (!text.trim()) throw new Error("Please describe your architecture");
         await onSubmit({
-          cloud_provider: provider,
-          environment,
+          ...base,
           input_type: "text",
           image_base64: null,
           text_description: text.trim(),
@@ -64,7 +92,7 @@ export default function GeneratorPanel({ onSubmit, loading }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="card p-6 sm:p-8 space-y-6">
+    <form onSubmit={handleSubmit} className="card-glow min-w-0 space-y-5 p-4 sm:space-y-6 sm:p-8">
       <div>
         <label className="mb-2 block text-sm font-medium text-slate-200">
           Cloud Provider
@@ -74,15 +102,38 @@ export default function GeneratorPanel({ onSubmit, loading }) {
 
       <div>
         <label className="mb-2 block text-sm font-medium text-slate-200">
+          Architecture preset
+        </label>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {PRESETS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setArchitecturePreset(p.id)}
+              className={`rounded-xl border px-3 py-2.5 text-left text-sm transition ${
+                architecturePreset === p.id
+                  ? "border-brand-400/50 bg-brand-500/15 text-white shadow-glow"
+                  : "border-white/10 bg-white/[0.03] text-slate-300 hover:border-white/20 hover:bg-white/[0.06]"
+              }`}
+            >
+              <span className="font-semibold text-slate-100">{p.label}</span>
+              <span className="mt-0.5 block text-xs text-slate-500">{p.description}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <label className="mb-2 block text-sm font-medium text-slate-200">
           Environment
         </label>
-        <div className="inline-flex rounded-xl border border-white/10 bg-white/5 p-1">
+        <div className="-mx-1 flex max-w-full snap-x snap-mandatory gap-1 overflow-x-auto rounded-xl border border-white/10 bg-white/5 p-1 sm:inline-flex sm:overflow-visible">
           {ENVIRONMENTS.map((env) => (
             <button
               key={env.id}
               type="button"
               onClick={() => setEnvironment(env.id)}
-              className={`rounded-lg px-3 py-1.5 text-sm transition ${
+              className={`shrink-0 snap-center rounded-lg px-4 py-2.5 text-sm transition sm:px-3 sm:py-1.5 ${
                 environment === env.id
                   ? "bg-white/10 text-white"
                   : "text-slate-300 hover:text-white"
@@ -95,13 +146,13 @@ export default function GeneratorPanel({ onSubmit, loading }) {
       </div>
 
       <div>
-        <div className="mb-3 flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
+        <div className="mb-3 flex min-w-0 items-stretch gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
           {TABS.map((t) => (
             <button
               key={t.id}
               type="button"
               onClick={() => setTab(t.id)}
-              className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+              className={`min-h-[44px] flex-1 rounded-lg px-2 py-2 text-center text-xs font-medium leading-snug transition sm:min-h-0 sm:px-3 sm:py-1.5 sm:text-sm ${
                 tab === t.id ? "bg-white/10 text-white" : "text-slate-300 hover:text-white"
               }`}
             >
@@ -117,15 +168,114 @@ export default function GeneratorPanel({ onSubmit, loading }) {
             onError={(msg) => setError(msg)}
           />
         ) : (
-          <textarea
-            className="textarea min-h-[180px] font-mono text-sm leading-relaxed"
-            placeholder={
-              "e.g., A 3-tier web app on AWS with an ALB in front of two EC2 instances in private subnets, " +
-              "an RDS Postgres database in another private subnet, and an S3 bucket for static assets fronted by CloudFront."
-            }
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-          />
+          <div className="relative">
+            <textarea
+              className="textarea min-h-[200px] pr-[3.25rem] pb-14 font-mono text-base leading-relaxed sm:min-h-[180px] sm:pb-12 sm:text-sm"
+              placeholder={
+                "e.g., A 3-tier web app on AWS with an ALB in front of two EC2 instances in private subnets, " +
+                "an RDS Postgres database in another private subnet, and an S3 bucket for static assets fronted by CloudFront."
+              }
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              aria-label="Architecture description"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                setError(null);
+                voice.toggle();
+              }}
+              disabled={!voice.supported}
+              title={
+                voice.supported
+                  ? voice.listening
+                    ? "Stop voice input"
+                    : "Start voice input (microphone)"
+                  : "Voice input is not supported in this browser"
+              }
+              className={`absolute bottom-2 right-2 grid h-11 w-11 place-items-center rounded-xl border transition focus:outline-none focus:ring-2 focus:ring-brand-400/50 sm:bottom-3 sm:right-3 sm:h-10 sm:w-10 ${
+                voice.listening
+                  ? "border-rose-400/50 bg-rose-500/20 text-rose-200 shadow-[0_0_20px_rgba(244,63,94,0.25)]"
+                  : voice.supported
+                    ? "border-white/15 bg-white/10 text-brand-200 hover:border-brand-400/40 hover:bg-brand-500/15"
+                    : "cursor-not-allowed border-white/5 bg-white/5 text-slate-600"
+              }`}
+              aria-pressed={voice.listening}
+              aria-label={voice.listening ? "Stop voice input" : "Start voice input"}
+            >
+              {voice.listening ? (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                  <rect x="6" y="6" width="12" height="12" rx="2" />
+                </svg>
+              ) : (
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M12 19v3M8 22h8M12 15a4 4 0 0 0 4-4V6a4 4 0 0 0-8 0v5a4 4 0 0 0 4 4Z" />
+                  <path d="M5 11a7 7 0 0 0 14 0" />
+                </svg>
+              )}
+            </button>
+            {voice.hint && (
+              <p className="mt-2 text-xs leading-relaxed text-slate-400">{voice.hint}</p>
+            )}
+            {voice.supported && (
+              <p className="mt-1 text-[11px] text-slate-600">
+                Tip: use Chrome on Android; speak in short phrases if results lag. Tap mic again to
+                stop.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <button
+          type="button"
+          onClick={() => setAdvancedOpen(!advancedOpen)}
+          className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-left text-sm text-slate-200 transition hover:bg-white/[0.06]"
+        >
+          <span className="pr-2 text-left font-medium leading-snug">
+            Advanced — refinements &amp; compare
+          </span>
+          <span className="text-slate-500">{advancedOpen ? "−" : "+"}</span>
+        </button>
+        {advancedOpen && (
+          <div className="mt-3 space-y-3 rounded-xl border border-white/5 bg-ink-900/40 p-4">
+            <div>
+              <label className="text-xs font-medium text-slate-400">
+                Correction / extra instructions
+              </label>
+              <textarea
+                className="textarea mt-1.5 min-h-[88px] text-sm"
+                placeholder="e.g., Add NAT gateways, use HTTPS-only on the ALB, pin provider 5.x…"
+                value={correctionNote}
+                onChange={(e) => setCorrectionNote(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-400">
+                Compare to previous generation ID (optional)
+              </label>
+              <input
+                className="input mt-1.5 break-all font-mono text-xs"
+                placeholder="uuid from History — line-level summary after generate"
+                value={compareGenerationId}
+                onChange={(e) => setCompareGenerationId(e.target.value)}
+              />
+              <p className="mt-1 text-[11px] text-slate-500">
+                Pre-filled from your last run on this browser when available.
+              </p>
+            </div>
+          </div>
         )}
       </div>
 
@@ -140,9 +290,9 @@ export default function GeneratorPanel({ onSubmit, loading }) {
 
       <div className="flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs text-slate-400">
-          Generation runs Claude with vision. It usually takes 10–25 seconds.
+          Generation uses your configured LLM (Azure, Claude, Gemini, or mock). Typical wait 10–40s.
         </p>
-        <Button type="submit" disabled={!canSubmit} className="sm:min-w-[180px]">
+        <Button type="submit" disabled={!canSubmit} className="w-full py-3.5 sm:w-auto sm:min-w-[200px] sm:py-2">
           {loading ? (
             <>
               <LoadingSpinner /> Generating…

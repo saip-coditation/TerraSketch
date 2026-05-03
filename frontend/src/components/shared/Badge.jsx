@@ -12,6 +12,6 @@ const tones = {
 };
 
 export default function Badge({ children, tone = "default", className = "" }) {
-  const cls = `inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${tones[tone] || tones.default} ${className}`.trim();
+  const cls = `inline-flex max-w-full items-center gap-1.5 whitespace-normal break-words rounded-full border px-2.5 py-0.5 text-xs font-medium ${tones[tone] || tones.default} ${className}`.trim();
   return <span className={cls}>{children}</span>;
 }

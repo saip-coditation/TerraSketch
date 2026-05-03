@@ -77,8 +77,8 @@ const SECTIONS = [
 
 export default function Docs() {
   return (
-    <main className="container-page py-10 sm:py-14">
-      <div className="mx-auto max-w-3xl">
+    <main className="container-page min-w-0 py-10 sm:py-14">
+      <div className="mx-auto min-w-0 max-w-3xl">
         <header className="mb-8">
           <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
             Docs
@@ -92,7 +92,7 @@ export default function Docs() {
           {SECTIONS.map((s) => (
             <section key={s.title} className="card p-5 sm:p-6">
               <h2 className="text-base font-semibold text-white">{s.title}</h2>
-              <div className="mt-2 text-sm leading-relaxed">{s.body}</div>
+              <div className="mt-2 break-words text-sm leading-relaxed">{s.body}</div>
             </section>
           ))}
         </div>

@@ -35,6 +35,8 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     provider: Mapped[str] = mapped_column(String(50), default="email", nullable=False)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    marketing_opt_in: Mapped[bool] = mapped_column(default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
     generations: Mapped[list["Generation"]] = relationship(back_populates="user")
@@ -58,6 +60,12 @@ class Generation(Base):
     assumptions: Mapped[list | None] = mapped_column(JSON, nullable=True)
     generated_files: Mapped[dict] = mapped_column(JSON, nullable=False)
     usage_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    diagram_match_percent: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    improvement_advice: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    security_warnings: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    terraform_validation: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    file_diff_summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 

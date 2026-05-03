@@ -101,6 +101,7 @@ def _call_openai_v1_chat(
     api_key: str,
     deployment: str,
     messages: list[dict[str, Any]],
+    max_tokens: int,
 ) -> str:
     try:
         from openai import OpenAI
@@ -122,7 +123,7 @@ def _call_openai_v1_chat(
         response = client.chat.completions.create(
             model=deployment,
             messages=messages,
-            max_tokens=8000,
+            max_tokens=max_tokens,
             temperature=0.2,
         )
     except Exception as exc:
@@ -143,13 +144,14 @@ def _call_foundry_models_chat_completions(
     api_key: str,
     deployment: str,
     messages: list[dict[str, Any]],
+    max_tokens: int,
 ) -> str:
     base = _foundry_base_url(endpoint)
     url = f"{base}/models/chat/completions?api-version={_FOUNDRY_CHAT_API_VERSION}"
     payload = {
         "model": deployment,
         "messages": messages,
-        "max_tokens": 8000,
+        "max_tokens": max_tokens,
         "temperature": 0.2,
     }
     headers = {"Content-Type": "application/json", "api-key": api_key}
@@ -201,6 +203,7 @@ def _call_classic_azure_openai(
     deployment: str,
     preferred_version: str,
     messages: list[dict[str, Any]],
+    max_tokens: int,
 ) -> str:
     try:
         from openai import AzureOpenAI
@@ -238,7 +241,7 @@ def _call_classic_azure_openai(
             response = client.chat.completions.create(
                 model=deployment,
                 messages=messages,
-                max_tokens=8000,
+                max_tokens=max_tokens,
                 temperature=0.2,
             )
             choice = response.choices[0] if response.choices else None
@@ -283,6 +286,7 @@ def generate_terraform(
     input_type: str,
     text_description: Optional[str] = None,
     image_base64: Optional[str] = None,
+    generation_hints: Optional[str] = None,
 ) -> ClaudeOutput:
     settings = get_settings()
     endpoint = (settings.AZURE_OPENAI_ENDPOINT or "").strip()
@@ -301,6 +305,7 @@ def generate_terraform(
         environment=environment,
         input_type=input_type,
         text_description=text_description,
+        generation_hints=generation_hints,
     )
 
     if input_type == "image" and image_base64:
@@ -318,11 +323,16 @@ def generate_terraform(
     ]
 
     errors: list[str] = []
+    max_out = settings.AZURE_OPENAI_MAX_TOKENS
 
     # 1) Preferred: OpenAI v1-compatible endpoint (works for Foundry + Azure OpenAI per MS docs)
     try:
         raw_text = _call_openai_v1_chat(
-            endpoint=endpoint, api_key=key, deployment=deployment, messages=messages
+            endpoint=endpoint,
+            api_key=key,
+            deployment=deployment,
+            messages=messages,
+            max_tokens=max_out,
         )
         return parse_claude_response(raw_text)
     except AzureOpenAIError as exc:
@@ -337,6 +347,7 @@ def generate_terraform(
                 api_key=key,
                 deployment=deployment,
                 messages=messages,
+                max_tokens=max_out,
             )
             return parse_claude_response(raw_text)
         except AzureOpenAIError as exc:
@@ -351,6 +362,7 @@ def generate_terraform(
             deployment=deployment,
             preferred_version=preferred_version,
             messages=messages,
+            max_tokens=max_out,
         )
         return parse_claude_response(raw_text)
     except AzureOpenAIError as exc:

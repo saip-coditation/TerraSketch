@@ -39,6 +39,13 @@ export default {
           "Roboto",
           "sans-serif",
         ],
+        display: [
+          "Outfit",
+          "Inter",
+          "ui-sans-serif",
+          "system-ui",
+          "sans-serif",
+        ],
         mono: [
           "JetBrains Mono",
           "ui-monospace",
@@ -50,6 +57,25 @@ export default {
       },
       boxShadow: {
         glow: "0 0 0 1px rgba(56,189,248,0.25), 0 12px 40px -12px rgba(56,189,248,0.45)",
+        panel: "0 25px 80px -20px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.06)",
+      },
+      keyframes: {
+        "gradient-shift": {
+          "0%, 100%": { backgroundPosition: "0% 50%" },
+          "50%": { backgroundPosition: "100% 50%" },
+        },
+        float: {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-6px)" },
+        },
+        shimmer: {
+          "100%": { transform: "translateX(100%)" },
+        },
+      },
+      animation: {
+        "gradient-shift": "gradient-shift 14s ease infinite",
+        float: "float 5s ease-in-out infinite",
+        shimmer: "shimmer 2s infinite",
       },
     },
   },

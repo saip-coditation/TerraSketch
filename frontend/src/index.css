@@ -6,27 +6,105 @@
   color-scheme: dark;
 }
 
-html,
-body,
+html {
+  min-height: 100%;
+  min-height: 100dvh;
+  overflow-x: clip;
+  max-width: 100%;
+}
+
+body {
+  min-height: 100%;
+  min-height: 100dvh;
+  overflow-x: clip;
+  max-width: 100%;
+}
+
 #root {
-  height: 100%;
+  min-height: 100%;
+  min-height: 100dvh;
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  max-width: 100%;
 }
 
 body {
   background:
     radial-gradient(1200px 600px at 10% -10%, rgba(56, 189, 248, 0.18), transparent 60%),
     radial-gradient(900px 500px at 110% 10%, rgba(139, 92, 246, 0.18), transparent 60%),
+    radial-gradient(800px 400px at 50% 100%, rgba(14, 165, 233, 0.08), transparent 55%),
     #070a14;
+  position: relative;
 }
+
+body::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  z-index: 0;
+}
+
 
 @layer components {
   .container-page {
-    @apply mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8;
+    @apply mx-auto w-full min-w-0 max-w-6xl px-3 sm:px-6 lg:px-8;
+  }
+
+  /* Notched phones: keep content inside safe area */
+  .safe-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
   .card {
-    @apply rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md
-      shadow-[0_0_0_1px_rgba(255,255,255,0.02)];
+    @apply rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-xl
+      shadow-panel;
+  }
+
+  .card-glow {
+    @apply card relative overflow-hidden;
+  }
+
+  .card-glow::after {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      125deg,
+      rgba(56, 189, 248, 0.35),
+      rgba(139, 92, 246, 0.2),
+      rgba(56, 189, 248, 0.15)
+    );
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0.55;
+  }
+
+  .heading-display {
+    @apply font-display font-bold tracking-tight text-white;
+  }
+
+  .mesh-hero {
+    background: linear-gradient(
+      120deg,
+      rgba(14, 165, 233, 0.15),
+      rgba(139, 92, 246, 0.12),
+      rgba(14, 165, 233, 0.08)
+    );
+    background-size: 200% 200%;
+    @apply animate-gradient-shift rounded-3xl border border-white/10;
   }
 
   .btn {
@@ -52,9 +130,10 @@ body {
   .input,
   .select,
   .textarea {
-    @apply w-full rounded-xl border border-white/10 bg-ink-900/70 px-3.5 py-2.5 text-sm
+    /* text-base on small screens avoids iOS zoom-on-focus */
+    @apply w-full rounded-xl border border-white/10 bg-ink-900/70 px-3.5 py-3 text-base
       text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-brand-400
-      focus:ring-2 focus:ring-brand-400/30;
+      focus:ring-2 focus:ring-brand-400/30 sm:py-2.5 sm:text-sm;
   }
 
   .badge {
@@ -63,8 +142,8 @@ body {
   }
 
   .tab {
-    @apply rounded-lg px-3 py-1.5 text-sm font-medium text-slate-300 transition
-      hover:bg-white/5 hover:text-white;
+    @apply min-h-[44px] items-center rounded-lg px-3 py-2 text-sm font-medium text-slate-300 transition
+      hover:bg-white/5 hover:text-white sm:min-h-0 sm:py-1.5;
   }
 
   .tab-active {

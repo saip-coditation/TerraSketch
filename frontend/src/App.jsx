@@ -8,18 +8,20 @@ import Result from "./pages/Result.jsx";
 import History from "./pages/History.jsx";
 import Docs from "./pages/Docs.jsx";
 import NotFound from "./pages/NotFound.jsx";
+import SignIn from "./pages/SignIn.jsx";
 
 export default function App() {
   return (
-    <div className="flex min-h-full flex-col">
+    <div className="flex min-h-[100dvh] min-h-full flex-col">
       <Navbar />
-      <div className="flex-1">
+      <div className="flex min-w-0 flex-1 flex-col">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/generate" element={<Generate />} />
           <Route path="/result/:id" element={<Result />} />
           <Route path="/history" element={<History />} />
           <Route path="/docs" element={<Docs />} />
+          <Route path="/signin" element={<SignIn />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </div>

@@ -1,5 +1,32 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Editor, { loader } from "@monaco-editor/react";
+
+function useResponsiveEditorLayout(fallbackHeight = 480) {
+  const [layout, setLayout] = useState({ height: fallbackHeight, narrow: false });
+
+  useEffect(() => {
+    const compute = () => {
+      const w = window.innerWidth;
+      const vh = window.visualViewport?.height ?? window.innerHeight;
+      let height = fallbackHeight;
+      if (w < 400) height = Math.max(200, Math.round(vh * 0.3));
+      else if (w < 640) height = Math.max(240, Math.round(vh * 0.34));
+      else if (w < 1024) height = Math.max(320, Math.min(520, Math.round(vh * 0.4)));
+      else height = Math.min(560, Math.max(400, Math.round(vh * 0.42)));
+      return { height, narrow: w < 640 };
+    };
+    const apply = () => setLayout(compute());
+    apply();
+    window.addEventListener("resize", apply);
+    window.visualViewport?.addEventListener?.("resize", apply);
+    return () => {
+      window.removeEventListener("resize", apply);
+      window.visualViewport?.removeEventListener?.("resize", apply);
+    };
+  }, [fallbackHeight]);
+
+  return layout;
+}
 
 let hclRegistered = false;
 
@@ -99,9 +126,29 @@ function registerHcl(monaco) {
 
 loader.init().then(registerHcl).catch(() => {});
 
-export default function MonacoPane({ value, language = "hcl", height = 480, onMount }) {
+export default function MonacoPane({ value, language = "hcl", height: heightProp, onMount }) {
+  const fallback = typeof heightProp === "number" ? heightProp : 480;
+  const { height: responsiveHeight, narrow } = useResponsiveEditorLayout(fallback);
+  const height = typeof heightProp === "number" ? heightProp : responsiveHeight;
+
+  const options = useMemo(
+    () => ({
+      readOnly: true,
+      minimap: { enabled: false },
+      fontFamily: "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+      fontSize: narrow ? 12 : 13,
+      scrollBeyondLastLine: false,
+      smoothScrolling: true,
+      renderLineHighlight: "all",
+      scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
+      padding: { top: narrow ? 10 : 14, bottom: narrow ? 10 : 14 },
+      wordWrap: "on",
+    }),
+    [narrow]
+  );
+
   return (
-    <div className="overflow-hidden rounded-xl border border-white/10">
+    <div className="min-w-0 overflow-hidden rounded-xl border border-white/10">
       <Editor
         height={height}
         defaultLanguage={language}
@@ -110,19 +157,7 @@ export default function MonacoPane({ value, language = "hcl", height = 480, onMo
         theme="terrasketch-dark"
         beforeMount={registerHcl}
         onMount={onMount}
-        options={{
-          readOnly: true,
-          minimap: { enabled: false },
-          fontFamily:
-            "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-          fontSize: 13,
-          scrollBeyondLastLine: false,
-          smoothScrolling: true,
-          renderLineHighlight: "all",
-          scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
-          padding: { top: 14, bottom: 14 },
-          wordWrap: "on",
-        }}
+        options={options}
       />
     </div>
   );

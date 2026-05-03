@@ -23,6 +23,8 @@ class Settings(BaseSettings):
 
     ANTHROPIC_API_KEY: str = Field(default="", description="Anthropic Claude API key")
     ANTHROPIC_MODEL: str = "claude-sonnet-4-20250514"
+    # Higher values reduce truncation of large JSON Terraform payloads; lower if the API rejects the request.
+    ANTHROPIC_MAX_TOKENS: int = Field(default=16384, ge=1024, le=200000)
     GEMINI_API_KEY: str = Field(default="", description="Google Gemini API key")
     GEMINI_MODEL: str = "gemini-2.0-flash"
     LLM_PROVIDER: str = "anthropic"
@@ -34,12 +36,29 @@ class Settings(BaseSettings):
     AZURE_OPENAI_DEPLOYMENT: str = ""
     # See https://learn.microsoft.com/azure/ai-services/openai/reference — pick one your region supports.
     AZURE_OPENAI_API_VERSION: str = "2024-10-21"
+    AZURE_OPENAI_MAX_TOKENS: int = Field(default=16384, ge=256, le=128000)
 
     DATABASE_URL: str = "sqlite:///./terrasketch.db"
 
     ALLOWED_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
 
+    # development: allow phone browsers hitting http://192.168.x.x:5173 without listing every IP
+    CORS_ALLOW_PRIVATE_NETWORK: bool = True
+
     RATE_LIMIT_GENERATE: str = "5/minute"
+    RATE_LIMIT_AUTH: str = "20/minute"
+
+    # HS256 signing secret for JWT access tokens. Override in production.
+    JWT_SECRET: str = "change-me-in-production-use-a-long-random-string"
+    JWT_EXPIRE_MINUTES: int = 60 * 24 * 7
+
+    # Optional Django-style DB admin at /admin (SQLAdmin). Set password to enable; keep secret in production.
+    ADMIN_UI_USER: str = "admin"
+    ADMIN_UI_PASSWORD: str = ""
+    ADMIN_SESSION_SECRET: str = ""
+
+    # When true, skip `terraform validate` subprocess after generation (faster local dev).
+    SKIP_TERRAFORM_VALIDATE: bool = False
 
     @property
     def allowed_origins_list(self) -> List[str]:

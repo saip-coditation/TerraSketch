@@ -23,7 +23,7 @@ const providers = [
 
 export default function ProviderSelector({ value, onChange }) {
   return (
-    <div className="grid grid-cols-3 gap-3">
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-3">
       {providers.map((p) => {
         const active = value === p.id;
         return (
@@ -31,7 +31,7 @@ export default function ProviderSelector({ value, onChange }) {
             key={p.id}
             type="button"
             onClick={() => onChange(p.id)}
-            className={`group relative flex flex-col items-start rounded-xl border p-4 text-left transition ${
+            className={`group relative flex min-h-[5.25rem] flex-col items-start rounded-xl border p-3 text-left transition active:scale-[0.98] sm:min-h-0 sm:p-4 ${
               active
                 ? "border-brand-400/60 bg-brand-400/10 shadow-glow"
                 : "border-white/10 bg-white/5 hover:bg-white/10"
@@ -39,12 +39,12 @@ export default function ProviderSelector({ value, onChange }) {
             aria-pressed={active}
           >
             <span
-              className={`mb-2 grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br ${p.accent} text-xs font-bold text-white`}
+              className={`mb-2 grid h-10 w-10 place-items-center rounded-lg bg-gradient-to-br ${p.accent} text-xs font-bold text-white sm:h-9 sm:w-9`}
             >
               {p.initials}
             </span>
             <span className="text-sm font-semibold text-white">{p.label}</span>
-            <span className="text-xs text-slate-400">
+            <span className="hidden text-xs text-slate-400 sm:block">
               Generate Terraform for {p.label}
             </span>
             {active && (

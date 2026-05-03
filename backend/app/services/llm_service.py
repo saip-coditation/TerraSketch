@@ -25,6 +25,7 @@ def generate_terraform(
     input_type: str,
     text_description: Optional[str] = None,
     image_base64: Optional[str] = None,
+    generation_hints: Optional[str] = None,
 ) -> ClaudeOutput:
     settings = get_settings()
     llm_provider = settings.LLM_PROVIDER.lower().strip()
@@ -36,6 +37,7 @@ def generate_terraform(
         "input_type": input_type,
         "text_description": text_description,
         "image_base64": image_base64,
+        "generation_hints": generation_hints,
     }
 
     if llm_provider == "mock":

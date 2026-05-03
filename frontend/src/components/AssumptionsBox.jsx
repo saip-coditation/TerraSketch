@@ -54,12 +54,14 @@ export default function AssumptionsBox({ assumptions = [], usageInstructions }) 
           {hasAssumptions && (
             <ul className="list-inside list-disc space-y-1.5">
               {assumptions.map((a, i) => (
-                <li key={i}>{a}</li>
+                <li key={i} className="break-words">
+                  {a}
+                </li>
               ))}
             </ul>
           )}
           {hasUsage && (
-            <p className="rounded-lg border border-white/5 bg-white/5 p-3 text-slate-200">
+            <p className="break-words rounded-lg border border-white/5 bg-white/5 p-3 text-slate-200">
               <span className="mr-1 font-semibold text-white">How to use:</span>
               {usageInstructions}
             </p>

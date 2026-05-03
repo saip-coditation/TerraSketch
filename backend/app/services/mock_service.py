@@ -166,6 +166,7 @@ def generate_terraform(
     input_type: str,
     text_description: Optional[str] = None,
     image_base64: Optional[str] = None,
+    generation_hints: Optional[str] = None,
 ) -> ClaudeOutput:
     provider = provider.lower().strip()
     files_by_provider = {
@@ -182,6 +183,9 @@ def generate_terraform(
         assumptions.append("Diagram parsing is skipped in mock mode; structure is based on provider defaults.")
     elif text_description:
         assumptions.append("Text description is not semantically parsed in mock mode.")
+    gh = (generation_hints or "").strip()
+    if gh:
+        assumptions.append(f"User hints recorded (mock mode does not apply them): {gh[:500]}")
 
     return ClaudeOutput(
         provider=provider if provider in ("aws", "azure", "gcp") else "aws",

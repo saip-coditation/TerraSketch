@@ -17,23 +17,29 @@ export default function Generate() {
         ...payload,
         session_id: getSessionId(),
       });
+      try {
+        sessionStorage.setItem("terrasketch_last_generation_id", result.generation_id);
+      } catch {
+        /* ignore */
+      }
       navigate(`/result/${result.generation_id}`, { state: result });
     } catch (err) {
-      setGlobalError(err.message || "Failed to generate Terraform");
+      const extra =
+        err.requestId != null ? ` (request ID: ${err.requestId})` : "";
+      setGlobalError((err.message || "Failed to generate Terraform") + extra);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <main className="container-page py-10 sm:py-14">
-      <div className="mx-auto max-w-3xl">
+    <main className="container-page min-w-0 py-6 sm:py-10 md:py-14">
+      <div className="mx-auto w-full min-w-0 max-w-3xl">
         <header className="mb-8">
-          <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
-            Generate Terraform
-          </h1>
+          <h1 className="heading-display text-3xl sm:text-4xl">Generate Terraform</h1>
           <p className="mt-2 text-sm text-slate-400">
-            Upload a diagram or describe your architecture in text. We'll do the rest.
+            Upload a diagram or describe your architecture. Presets and corrections steer the model;
+            optional diff vs your last run.
           </p>
         </header>
 

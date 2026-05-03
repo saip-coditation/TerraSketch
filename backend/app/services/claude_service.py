@@ -87,12 +87,14 @@ def _build_message_content(
     input_type: str,
     text_description: Optional[str],
     image_base64: Optional[str],
+    generation_hints: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     user_text = build_user_message(
         provider=provider,
         environment=environment,
         input_type=input_type,
         text_description=text_description,
+        generation_hints=generation_hints,
     )
 
     content: List[Dict[str, Any]] = []
@@ -120,6 +122,7 @@ def generate_terraform(
     input_type: str,
     text_description: Optional[str] = None,
     image_base64: Optional[str] = None,
+    generation_hints: Optional[str] = None,
 ) -> ClaudeOutput:
     """Call Claude and return the parsed Terraform output."""
     settings = get_settings()
@@ -143,6 +146,7 @@ def generate_terraform(
         input_type=input_type,
         text_description=text_description,
         image_base64=image_base64,
+        generation_hints=generation_hints,
     )
 
     logger.info(
@@ -156,7 +160,7 @@ def generate_terraform(
     try:
         response = client.messages.create(
             model=settings.ANTHROPIC_MODEL,
-            max_tokens=8000,
+            max_tokens=settings.ANTHROPIC_MAX_TOKENS,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": content}],
         )

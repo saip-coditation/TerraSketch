@@ -23,18 +23,34 @@ pip install -r requirements.txt
 cp .env.example .env
 # Edit .env: set LLM_PROVIDER and the matching keys (see table below).
 
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Open [http://localhost:8000/docs](http://localhost:8000/docs) for the
 interactive OpenAPI / Swagger UI.
 
+### Admin UI (like Django admin)
+
+FastAPI has no built-in admin. This project uses **[SQLAdmin](https://github.com/aminalaee/sqladmin)** so you can browse **Users**, **Generations**, and **Feedback** in the browser.
+
+1. In `backend/.env` set **`ADMIN_UI_PASSWORD`** (and optionally **`ADMIN_UI_USER`**, default `admin`). Use a strong password in production.
+2. Restart Uvicorn.
+3. Open **`http://localhost:8000/admin`** (or your API host), sign in with that username/password.
+
+If `ADMIN_UI_PASSWORD` is empty, `/admin` is **not** mounted. Plain-text passwords are **not** stored; the User detail view shows **`password_hash`** only.
+
 The first time you run it (with the default SQLite `DATABASE_URL`),
-tables are created automatically on startup. For Postgres, use Alembic:
+tables are created automatically on startup. If the DB already exists but
+Alembic has never run, stamp the current schema then upgrade:
 
 ```bash
+alembic stamp 0001_initial
 alembic upgrade head
 ```
+
+### Open the app on your phone over the internet
+
+If **Snap / ngrok** fails (`unable to contact snap store`), use **Cloudflare Quick Tunnel** or a manual ngrok binary — see [docs/PUBLIC_TUNNEL.md](../docs/PUBLIC_TUNNEL.md).
 
 ## Environment variables
 
@@ -55,6 +71,9 @@ alembic upgrade head
 | `RATE_LIMIT_GENERATE` | no | `5/minute` | slowapi rate per IP |
 | `APP_ENV` | no | `development` | Free-form env tag |
 | `LOG_LEVEL` | no | `INFO` | Python logging level |
+| `ADMIN_UI_PASSWORD` | no | — | If set, enables SQLAdmin at `/admin` |
+| `ADMIN_UI_USER` | no | `admin` | Login for `/admin` |
+| `ADMIN_SESSION_SECRET` | no | `JWT_SECRET` | Cookie signing for admin session |
 
 ### Microsoft Foundry + GPT-4o (`2024-11-20`)
 
@@ -81,9 +100,14 @@ AZURE_OPENAI_API_VERSION=2024-10-21
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/api/generate` | Generate Terraform from image or text |
+| `POST` | `/api/auth/register` | Create account (email, password; optional `marketing_opt_in`) |
+| `POST` | `/api/auth/login` | Sign in → JWT |
+| `GET` | `/api/auth/me` | Current user (Bearer token) |
+| `POST` | `/api/auth/attach-session` | Link anonymous `session_id` rows to your user (Bearer) |
+| `POST` | `/api/auth/logout` | No-op; client discards token |
+| `POST` | `/api/generate` | Generate Terraform (optional `Authorization: Bearer` sets `user_id`) |
 | `GET` | `/api/generation/{id}` | Fetch a single generation |
-| `GET` | `/api/history?session_id=...` | Last 10 generations for a session |
+| `GET` | `/api/history` | Signed in: Bearer token. Anonymous: `?session_id=...` |
 | `POST` | `/api/feedback` | Rate a generation (1-5 stars) |
 | `GET` | `/api/health` | Health check |
 
@@ -95,6 +119,6 @@ See `app/db/schemas.py` for full request/response schemas.
 2. Create a new Web Service on Render pointing at `backend/`.
 3. Build command: `pip install -r requirements.txt`
 4. Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-5. Add env vars: `LLM_PROVIDER`, provider keys (`ANTHROPIC_*`, `GEMINI_*`, or `AZURE_OPENAI_*`), `DATABASE_URL`, `ALLOWED_ORIGINS`.
+5. Add env vars: `LLM_PROVIDER`, provider keys (`ANTHROPIC_*`, `GEMINI_*`, or `AZURE_OPENAI_*`), `DATABASE_URL`, `ALLOWED_ORIGINS`, and `JWT_SECRET` (long random string).
 6. Provision a free PostgreSQL DB on Render, copy its internal URL into `DATABASE_URL`.
 7. From the Render shell or a one-off job: `alembic upgrade head`.

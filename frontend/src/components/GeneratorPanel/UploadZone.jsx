@@ -42,7 +42,7 @@ export default function UploadZone({ value, onChange, onError }) {
         }}
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}
-        className={`flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed p-8 text-center transition ${
+        className={`flex min-h-[10rem] w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition sm:min-h-0 sm:p-8 ${
           dragOver
             ? "border-brand-400 bg-brand-400/10"
             : "border-white/15 bg-ink-900/40 hover:border-white/25 hover:bg-white/5"

@@ -5,7 +5,12 @@ import ResourceMap from "../components/ResourceMap.jsx";
 import AssumptionsBox from "../components/AssumptionsBox.jsx";
 import LoadingSpinner from "../components/shared/LoadingSpinner.jsx";
 import Button from "../components/shared/Button.jsx";
-import { getGeneration, postFeedback } from "../services/api.js";
+import MatchScoreRing from "../components/insights/MatchScoreRing.jsx";
+import InsightsDeck from "../components/insights/InsightsDeck.jsx";
+import FileDiffSummary from "../components/insights/FileDiffSummary.jsx";
+import ShareAndGitCard from "../components/insights/ShareAndGitCard.jsx";
+import { getApiBaseUrl, getGeneration, postFeedback } from "../services/api.js";
+import { getSessionId } from "../utils/sessionId.js";
 
 function formatProvider(p) {
   return { aws: "AWS", azure: "Azure", gcp: "Google Cloud" }[p] || p;
@@ -19,13 +24,13 @@ function formatDate(iso) {
 
 function StarRating({ value, onChange }) {
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex flex-wrap items-center gap-0.5 sm:gap-1">
       {[1, 2, 3, 4, 5].map((n) => (
         <button
           key={n}
           type="button"
           onClick={() => onChange(n)}
-          className="p-1 text-slate-500 transition hover:scale-110 hover:text-amber-300"
+          className="grid h-11 w-11 place-items-center text-slate-500 transition active:scale-95 hover:text-amber-300 sm:h-9 sm:w-9"
           aria-label={`Rate ${n} out of 5`}
         >
           <svg
@@ -93,9 +98,13 @@ export default function Result() {
 
   if (loading) {
     return (
-      <main className="container-page py-20">
-        <div className="flex items-center justify-center gap-3 text-slate-300">
-          <LoadingSpinner size={22} /> Loading generation…
+      <main className="container-page min-w-0 py-20">
+        <div className="flex flex-col items-center justify-center gap-4 py-16 text-slate-300">
+          <div className="relative">
+            <div className="absolute inset-0 animate-ping rounded-full bg-brand-500/20" />
+            <LoadingSpinner size={28} />
+          </div>
+          <p className="text-sm text-slate-400">Loading generation…</p>
         </div>
       </main>
     );
@@ -103,11 +112,9 @@ export default function Result() {
 
   if (error && !data) {
     return (
-      <main className="container-page py-20">
+      <main className="container-page min-w-0 py-20">
         <div className="card mx-auto max-w-lg p-6 text-center">
-          <h2 className="text-lg font-semibold text-white">
-            Couldn't load this generation
-          </h2>
+          <h2 className="heading-display text-lg">Couldn't load this generation</h2>
           <p className="mt-2 text-sm text-slate-400">{error}</p>
           <Link to="/generate" className="btn-primary mt-4 inline-flex">
             Start a new one
@@ -119,86 +126,113 @@ export default function Result() {
 
   if (!data) return null;
 
+  const sessionHint = getSessionId().slice(0, 8);
+
   return (
-    <main className="container-page py-10 sm:py-14 space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-xs uppercase tracking-wider text-brand-300">
-            Generation · {data.generation_id?.slice(0, 8)}
+    <main className="container-page min-w-0 space-y-6 py-6 sm:space-y-8 sm:py-10 md:py-14">
+      <header className="flex min-w-0 flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <p className="break-words text-xs uppercase leading-relaxed tracking-wider text-brand-300/90">
+            Generation ·{" "}
+            <span className="font-mono text-slate-300">{data.generation_id?.slice(0, 8)}</span>
+            <span className="text-slate-600"> · session {sessionHint}…</span>
           </p>
-          <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
-            {formatProvider(data.cloud_provider)} ·{" "}
-            <span className="text-slate-300">{data.environment}</span>
+          <h1 className="heading-display mt-1 break-words text-2xl sm:text-3xl md:text-4xl">
+            {formatProvider(data.cloud_provider)}{" "}
+            <span className="text-slate-400 font-normal text-xl sm:text-2xl md:text-3xl">
+              · {data.environment}
+            </span>
           </h1>
-          <p className="mt-1 text-sm text-slate-400">
-            Created {formatDate(data.created_at)}
-          </p>
+          <p className="mt-1 text-sm text-slate-400">Created {formatDate(data.created_at)}</p>
+          {data.request_id && (
+            <p className="mt-1 font-mono text-[11px] text-slate-500">
+              Request ID: {data.request_id}
+            </p>
+          )}
         </div>
-        <div className="flex items-center gap-2">
-          <Link to="/history" className="btn-secondary">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
+          <Link to="/history" className="btn-secondary w-full justify-center py-3.5 sm:w-auto sm:py-2">
             History
           </Link>
-          <Link to="/generate" className="btn-primary">
+          <Link to="/generate" className="btn-primary w-full justify-center py-3.5 sm:w-auto sm:py-2">
             New generation
           </Link>
         </div>
       </header>
 
-      <section className="card p-5 sm:p-6">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-300">
-          Resources identified
-        </h2>
-        <ResourceMap resources={data.resources_identified || []} />
-      </section>
+      <div className="grid min-w-0 gap-6 lg:gap-8 xl:grid-cols-[minmax(0,340px),minmax(0,1fr)] xl:items-start">
+        <aside className="min-w-0 space-y-4 xl:sticky xl:top-20 xl:self-start">
+          <MatchScoreRing percent={data.diagram_match_percent ?? 0} />
+          <InsightsDeck
+            improvementAdvice={data.improvement_advice || []}
+            securityWarnings={data.security_warnings || []}
+            terraformValidation={data.terraform_validation}
+          />
+          <FileDiffSummary summary={data.file_diff_summary} />
+          <ShareAndGitCard
+            generationId={data.generation_id}
+            requestId={data.request_id}
+            apiBase={getApiBaseUrl()}
+          />
+        </aside>
 
-      <AssumptionsBox
-        assumptions={data.assumptions}
-        usageInstructions={data.usage_instructions}
-      />
+        <div className="space-y-6 min-w-0">
+          <section className="card p-5 sm:p-6">
+            <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Resources identified
+            </h2>
+            <ResourceMap resources={data.resources_identified || []} />
+          </section>
 
-      <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-300">
-          Terraform output
-        </h2>
-        <CodeViewer files={data.files || {}} />
-      </section>
+          <AssumptionsBox
+            assumptions={data.assumptions}
+            usageInstructions={data.usage_instructions}
+          />
 
-      <section className="card p-5 sm:p-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-300">
-          Was this useful?
-        </h2>
-        <p className="mt-1 text-sm text-slate-400">
-          Help improve TerraSketch — your rating tunes future generations.
-        </p>
-        {feedbackState === "submitted" ? (
-          <p className="mt-3 text-sm text-emerald-300">
-            Thanks for the feedback!
-          </p>
-        ) : (
-          <div className="mt-3 space-y-3">
-            <StarRating value={rating} onChange={setRating} />
-            <textarea
-              className="textarea min-h-[80px]"
-              placeholder="Optional comment — what worked or didn't?"
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-            />
-            <div className="flex items-center gap-2">
-              <Button
-                onClick={submitFeedback}
-                disabled={!rating || feedbackState === "submitting"}
-              >
-                {feedbackState === "submitting" ? "Sending…" : "Submit feedback"}
-              </Button>
-              {feedbackState === "error" && (
-                <span className="text-xs text-rose-300">
-                  Couldn't submit — please try again.
-                </span>
-              )}
-            </div>
-          </div>
-        )}
-      </section>
+          <section>
+            <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Terraform output
+            </h2>
+            <CodeViewer files={data.files || {}} />
+          </section>
+
+          <section className="card p-5 sm:p-6">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+              Was this useful?
+            </h2>
+            <p className="mt-1 text-sm text-slate-400">
+              Help improve TerraSketch — your rating tunes future generations.
+            </p>
+            {feedbackState === "submitted" ? (
+              <p className="mt-3 text-sm text-emerald-300">Thanks for the feedback!</p>
+            ) : (
+              <div className="mt-3 space-y-3">
+                <StarRating value={rating} onChange={setRating} />
+                <textarea
+                  className="textarea min-h-[80px]"
+                  placeholder="Optional comment — what worked or didn't?"
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                />
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                  <Button
+                    className="w-full justify-center sm:w-auto"
+                    onClick={submitFeedback}
+                    disabled={!rating || feedbackState === "submitting"}
+                  >
+                    {feedbackState === "submitting" ? "Sending…" : "Submit feedback"}
+                  </Button>
+                  {feedbackState === "error" && (
+                    <span className="text-xs text-rose-300">
+                      Couldn't submit — please try again.
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
     </main>
   );
 }

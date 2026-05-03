@@ -6,7 +6,7 @@ export default function FileTab({ name, active, onClick, lines }) {
       type="button"
       onClick={onClick}
       aria-selected={active}
-      className={`group flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition ${
+      className={`group flex shrink-0 snap-start items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition sm:py-1.5 ${
         active
           ? "bg-white/10 text-white"
           : "text-slate-300 hover:bg-white/5 hover:text-white"

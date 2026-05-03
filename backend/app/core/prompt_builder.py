@@ -37,7 +37,29 @@ AWS DIAGRAM ACCURACY (when provider is aws — e.g. CloudFront + S3 + ALB + ECS 
 15. For Amazon ElastiCache in a VPC, place clusters in private subnets and attach security groups allowing ingress ONLY from the ECS task/service security group on the cache port (e.g. 6379 for Redis).
 16. For ECS Fargate behind an ALB, wire `load_balancer` on `aws_ecs_service`, target group, listener, and security groups so ALB can reach task ENIs on the container port.
 
-Think step by step: first list all resources you see, then map their relationships, then write the Terraform.
+AZURE / GCP DIAGRAM ACCURACY (when provider is azure or gcp):
+17. Azure: model resource groups, VNets/subnets, NSGs with least-privilege rules, Azure Load Balancer or Application Gateway when the diagram shows ingress, managed identity or service principals instead of embedding secrets, and private endpoints or service endpoints when data services sit in private tiers.
+18. GCP: model VPC + subnets + firewall rules explicitly, Cloud Load Balancing when shown, GCE MIG or GKE / Cloud Run per diagram, Cloud SQL or Firestore with private IP or authorized networks as appropriate, and IAM bindings instead of static keys.
+
+HCL CORRECTNESS (all providers):
+19. Use only resources for the TARGET provider (aws | azure | gcp) requested by the user — no mixing providers in one codebase.
+20. Every `var.foo` reference MUST have a matching `variable "foo"` block in variables.tf with type and description; avoid undeclared variables.
+21. Wire references correctly: security groups, subnets, VPC IDs, ARNs, target groups, listeners, IAM roles — attribute names must match the Terraform provider schema (use implicit dependencies via references rather than guessing IDs).
+22. Avoid deprecated arguments where the current provider docs recommend a replacement (e.g. prefer split resources for S3/CloudFront over obsolete patterns).
+23. Ensure subnet ↔ route table ↔ IGW/NAT associations are complete when public/private tiers are shown; DB/cache tiers must sit in private subnets with SG ingress only from app tier SGs.
+24. Do not invent extra major services not shown unless needed for a minimal working stack — if you add any, list them in assumptions.
+
+DIAGRAM FIDELITY (images especially):
+25. Before writing Terraform, mentally enumerate every shape/icon/label and every arrow/edge; each visible edge should map to a concrete Terraform relationship (attachment, rule, target, listener, peering, bucket policy, etc.).
+26. Preserve multiplicity: if the diagram shows N identical nodes (e.g. two AZs, two tasks), model HA/Multi-AZ or count/for_each — do not collapse to a single instance unless the diagram clearly shows one.
+27. If text or icons are ambiguous, choose the most likely real cloud service and record the guess in assumptions — never leave a labeled component out of resources_identified without explanation.
+
+SELF-CHECK (mandatory before returning JSON):
+28. `resources_identified` MUST correspond to what appears in main.tf (every named major component from the diagram should appear in one or the other; no orphan labels).
+29. Re-read the generated HCL for broken references, missing data sources for lookups when IDs are unknown, and mismatched security group directions (ingress vs egress).
+30. Ensure the JSON is complete: all four files non-empty, valid HCL strings escaped for JSON (quotes/newlines), no truncated files.
+
+Think step by step: first list all resources you see, then map their relationships, then write the Terraform, then run the self-check.
 
 If you identify repeated patterns (e.g., multiple identical EC2 instances, multiple subnets), generate a reusable Terraform module instead of repeating resource blocks where appropriate.
 
@@ -62,6 +84,7 @@ def build_user_message(
     environment: str,
     input_type: str,
     text_description: Optional[str] = None,
+    generation_hints: Optional[str] = None,
 ) -> str:
     """Construct the user-facing message body for a generation request."""
     provider = provider.lower().strip()
@@ -76,7 +99,9 @@ def build_user_message(
     if input_type == "image":
         parts.append(
             "The diagram has been provided as an image (see the attached image content). "
-            "Identify all cloud services, connections, and infrastructure components visible."
+            "Examine it carefully: read every label, icon, and zone/region note; count repeated components; "
+            "follow every arrow or line between services. Identify all cloud services, connections, and "
+            "infrastructure components visible, then generate Terraform that reflects that topology — not a generic template."
         )
     elif input_type in ("text", "draw"):
         description = (text_description or "").strip() or "(no description provided)"
@@ -92,7 +117,23 @@ def build_user_message(
             f"Environment: {environment} (dev | staging | production) — "
             "use this to set sensible defaults for sizing.",
             "",
+        ]
+    )
+
+    hints = (generation_hints or "").strip()
+    if hints:
+        parts.extend(
+            [
+                "Additional guidance from the user (apply on top of the diagram/description):",
+                hints,
+                "",
+            ]
+        )
+
+    parts.extend(
+        [
             "Please generate complete, production-ready Terraform code following all rules in your system instructions.",
+            "Before emitting JSON, verify resources_identified matches the resources in main.tf and that variables.tf declares every var used.",
             "Return ONLY the JSON object as specified.",
         ]
     )

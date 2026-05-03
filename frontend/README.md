@@ -11,7 +11,7 @@ cd frontend
 npm install
 
 cp .env.example .env
-# Optional: set VITE_API_URL (default: http://localhost:8000)
+# Optional: VITE_API_URL (empty = Vite proxy to local API).
 
 npm run dev
 ```
@@ -33,6 +33,7 @@ Open [http://localhost:5173](http://localhost:5173).
 - `/result/:id` — Generated Terraform with Monaco viewer, copy/download, feedback.
 - `/history` — Last 10 generations for the current browser session.
 - `/docs` — How-to + tips.
+- `/signin` — Email and password (account stored in backend DB).
 
 ## Deploying to Vercel
 

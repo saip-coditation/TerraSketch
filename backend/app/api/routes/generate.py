@@ -5,22 +5,46 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db
+from app.api.deps import get_db, get_optional_user
 from app.core.config import get_settings
 from app.core.limiter import limiter
 from app.db import models
 from app.db.schemas import GenerateRequest, GenerateResponse
-from app.services.llm_service import LLMServiceError, generate_terraform
-from app.services.terraform_parser import TerraformParseError
 from app.services.aws_microservice_canonical import (
     canonical_resources_list,
     maybe_replace_with_canonical_microservice,
 )
+from app.services.diagram_match_analyzer import analyze_diagram_match
+from app.services.file_diff import summarize_file_diffs
+from app.services.generation_hints import build_generation_hints
+from app.services.llm_service import LLMServiceError, generate_terraform
+from app.services.secret_scan import scan_generated_files
+from app.services.terraform_cli import run_terraform_fmt_check, run_terraform_validate
+from app.services.terraform_parser import TerraformParseError
 from app.services.terraform_postprocess import postprocess_generated_files
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 _settings = get_settings()
+
+
+def _response_from_record(record: models.Generation, request_id: str | None) -> GenerateResponse:
+    return GenerateResponse(
+        generation_id=record.id,
+        cloud_provider=record.cloud_provider,
+        environment=record.environment,
+        resources_identified=record.resources_identified or [],
+        assumptions=record.assumptions or [],
+        files=record.generated_files,
+        usage_instructions=record.usage_instructions,
+        diagram_match_percent=record.diagram_match_percent or 0,
+        improvement_advice=record.improvement_advice or [],
+        security_warnings=record.security_warnings or [],
+        terraform_validation=record.terraform_validation,
+        file_diff_summary=record.file_diff_summary,
+        request_id=request_id,
+        created_at=record.created_at,
+    )
 
 
 @router.post(
@@ -34,11 +58,41 @@ def post_generate(
     request: Request,
     payload: GenerateRequest,
     db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_optional_user),
 ) -> GenerateResponse:
     try:
         payload.ensure_input_consistency()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    compare_row: models.Generation | None = None
+    if payload.compare_generation_id:
+        compare_row = db.get(models.Generation, payload.compare_generation_id.strip())
+        if not compare_row:
+            raise HTTPException(status_code=404, detail="compare_generation_id not found")
+        if current_user:
+            if compare_row.user_id:
+                if compare_row.user_id != current_user.id:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Cannot compare with a generation from another account",
+                    )
+            elif compare_row.session_id != payload.session_id:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Cannot compare with a generation from another session",
+                )
+        elif compare_row.session_id != payload.session_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Cannot compare with a generation from another session",
+            )
+
+    hints_text = build_generation_hints(
+        architecture_preset=payload.architecture_preset,
+        correction_note=payload.correction_note,
+    )
+    generation_hints = hints_text if hints_text else None
 
     try:
         ai_output = generate_terraform(
@@ -47,6 +101,7 @@ def post_generate(
             input_type=payload.input_type,
             text_description=payload.text_description,
             image_base64=payload.image_base64,
+            generation_hints=generation_hints,
         )
     except LLMServiceError as exc:
         logger.warning("LLM service error: %s", exc)
@@ -94,8 +149,31 @@ def post_generate(
 
     ai_output = ai_output.model_copy(update=updates)
 
+    match_percent, improvement_advice = analyze_diagram_match(
+        cloud_provider=payload.cloud_provider,
+        files=ai_output.files,
+        resources_identified=list(ai_output.resources_identified or []),
+    )
+
+    security_warnings = scan_generated_files(ai_output.files)
+
+    file_diff_summary: dict | None = None
+    if compare_row and compare_row.generated_files:
+        summary = summarize_file_diffs(compare_row.generated_files, ai_output.files)
+        file_diff_summary = summary or None
+
+    terraform_validation: dict | None = None
+    if not _settings.SKIP_TERRAFORM_VALIDATE:
+        terraform_validation = {
+            "validate": run_terraform_validate(ai_output.files),
+            "fmt": run_terraform_fmt_check(ai_output.files),
+        }
+
+    rid = getattr(request.state, "request_id", None)
+
     record = models.Generation(
         session_id=payload.session_id,
+        user_id=current_user.id if current_user else None,
         cloud_provider=payload.cloud_provider,
         environment=payload.environment,
         input_type=payload.input_type,
@@ -104,21 +182,24 @@ def post_generate(
         assumptions=ai_output.assumptions,
         generated_files=ai_output.files,
         usage_instructions=ai_output.usage_instructions,
+        diagram_match_percent=match_percent,
+        improvement_advice=improvement_advice,
+        security_warnings=security_warnings,
+        terraform_validation=terraform_validation,
+        file_diff_summary=file_diff_summary,
     )
     db.add(record)
     db.commit()
     db.refresh(record)
 
-    return GenerateResponse(
-        generation_id=record.id,
-        cloud_provider=record.cloud_provider,
-        environment=record.environment,
-        resources_identified=record.resources_identified or [],
-        assumptions=record.assumptions or [],
-        files=record.generated_files,
-        usage_instructions=record.usage_instructions,
-        created_at=record.created_at,
+    logger.info(
+        "Generation %s complete (match=%s%%, request_id=%s)",
+        record.id,
+        match_percent,
+        rid,
     )
+
+    return _response_from_record(record, rid)
 
 
 @router.get(
@@ -126,18 +207,10 @@ def post_generate(
     response_model=GenerateResponse,
     summary="Fetch a single generation by ID",
 )
-def get_generation(generation_id: str, db: Session = Depends(get_db)) -> GenerateResponse:
+def get_generation(generation_id: str, request: Request, db: Session = Depends(get_db)) -> GenerateResponse:
     record = db.get(models.Generation, generation_id)
     if not record:
         raise HTTPException(status_code=404, detail="Generation not found")
 
-    return GenerateResponse(
-        generation_id=record.id,
-        cloud_provider=record.cloud_provider,
-        environment=record.environment,
-        resources_identified=record.resources_identified or [],
-        assumptions=record.assumptions or [],
-        files=record.generated_files,
-        usage_instructions=record.usage_instructions,
-        created_at=record.created_at,
-    )
+    rid = getattr(request.state, "request_id", None)
+    return _response_from_record(record, rid)

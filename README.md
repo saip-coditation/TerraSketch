@@ -10,9 +10,10 @@ Monaco-based code viewer.
 
 ```
 .
-├── backend/    # FastAPI + SQLAlchemy + Alembic + Anthropic SDK
-├── frontend/   # React + Vite + Tailwind + Monaco
-├── render.yaml # Render blueprint (backend + free Postgres)
+├── backend/           # FastAPI + SQLAlchemy + Alembic + Anthropic SDK
+├── frontend/          # React + Vite + Tailwind + Monaco
+├── run_terrasketch.sh # Opens backend + Vite + Cloudflare tunnel (GUI terminals)
+├── render.yaml        # Render blueprint (backend + free Postgres)
 └── README.md
 ```
 
@@ -62,6 +63,76 @@ npm run dev
 ```
 
 Visit [http://localhost:5173](http://localhost:5173).
+
+### One-command launcher (`run_terrasketch.sh`)
+
+From the repo root (needs a GUI terminal like GNOME Terminal):
+
+```bash
+chmod +x run_terrasketch.sh
+./run_terrasketch.sh
+```
+
+This opens **three** windows: **Uvicorn** on `0.0.0.0:8000`, **Vite** with
+`--host 0.0.0.0`, and **Cloudflare quick tunnel** to `http://127.0.0.1:5173`
+(after briefly waiting for Vite to respond). Use `./run_terrasketch.sh
+--no-tunnel` if you only want backend + frontend (e.g. LAN testing).
+
+### Public URL (Cloudflare quick tunnel) — manual steps
+
+**1. Frontend env (important)** — In `frontend/.env`, keep the API URL **empty**
+so the browser uses the same host as the tunnel and Vite proxies `/api` →
+FastAPI:
+
+```bash
+VITE_API_URL=
+```
+
+Restart `npm run dev` after changing it.
+
+**2. Run the app (two terminals)** — Or use `run_terrasketch.sh` for these.
+
+- **Terminal A — backend**
+
+  ```bash
+  cd backend
+  source .venv/bin/activate
+  uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+  ```
+
+- **Terminal B — frontend**
+
+  ```bash
+  cd frontend
+  npm run dev -- --host 0.0.0.0
+  ```
+
+Confirm locally: [http://127.0.0.1:5173](http://127.0.0.1:5173) loads and
+generate still works.
+
+**3. Start the Cloudflare tunnel** — **Terminal C**
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:5173
+```
+
+In the output, find a line like `https://something-random.trycloudflare.com`.
+That is your public link — open it on your phone or share it. The URL changes
+every time you restart this command.
+
+**4. If the tunnel site is blocked or you see CORS errors** — The repo’s
+`frontend/vite.config.js` already sets `allowedHosts: true` so the
+`trycloudflare.com` host is allowed. If you still see API errors, add your
+tunnel origin to `backend/.env` **`ALLOWED_ORIGINS`** (comma-separated), e.g.
+`https://YOUR-SUBDOMAIN.trycloudflare.com`, then restart Uvicorn.
+
+**`/admin` (SQLAdmin) via the tunnel** — With the dev server, Vite proxies
+`/admin` to FastAPI (same as `/api`). So you can open
+`https://….trycloudflare.com/admin` and e.g.
+`https://….trycloudflare.com/admin/user/list` while `ADMIN_UI_PASSWORD` is set
+and Uvicorn is running. Restart `npm run dev` after changing `vite.config.js`.
+
+More detail: [`docs/PUBLIC_TUNNEL.md`](docs/PUBLIC_TUNNEL.md).
 
 ## Deploying for free
 
