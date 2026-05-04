@@ -6,8 +6,6 @@ an upstream provider hits quota limits.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from app.db.schemas import ClaudeOutput
 
 
@@ -164,9 +162,9 @@ def generate_terraform(
     provider: str,
     environment: str,
     input_type: str,
-    text_description: Optional[str] = None,
-    image_base64: Optional[str] = None,
-    generation_hints: Optional[str] = None,
+    text_description: str | None = None,
+    image_base64: str | None = None,
+    generation_hints: str | None = None,
 ) -> ClaudeOutput:
     provider = provider.lower().strip()
     files_by_provider = {
@@ -180,7 +178,9 @@ def generate_terraform(
         "Resources are scaffolding templates and should be customized before production use.",
     ]
     if input_type == "image":
-        assumptions.append("Diagram parsing is skipped in mock mode; structure is based on provider defaults.")
+        assumptions.append(
+            "Diagram parsing is skipped in mock mode; structure is based on provider defaults."
+        )
     elif text_description:
         assumptions.append("Text description is not semantically parsed in mock mode.")
     gh = (generation_hints or "").strip()

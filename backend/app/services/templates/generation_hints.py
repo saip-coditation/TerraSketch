@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 ArchitecturePreset = str  # auto | simple_web | microservice | serverless
 
 _PRESET_TEXT = {
@@ -31,7 +29,7 @@ _PRESET_TEXT = {
 def build_generation_hints(
     *,
     architecture_preset: str,
-    correction_note: Optional[str],
+    correction_note: str | None,
 ) -> str:
     preset = (architecture_preset or "auto").lower().strip()
     chunks: list[str] = []

@@ -9,10 +9,10 @@ It produces:
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Sequence, Tuple
+from collections.abc import Sequence
 
 
-def _blob(files: Dict[str, str], resources_identified: Sequence[str]) -> str:
+def _blob(files: dict[str, str], resources_identified: Sequence[str]) -> str:
     return (
         "\n".join(resources_identified).lower()
         + "\n"
@@ -26,7 +26,7 @@ def _blob(files: Dict[str, str], resources_identified: Sequence[str]) -> str:
     )
 
 
-def _aws_simple_web_rules(text: str) -> List[Tuple[str, bool, str]]:
+def _aws_simple_web_rules(text: str) -> list[tuple[str, bool, str]]:
     return [
         ("VPC", bool(re.search(r'resource\s+"aws_vpc"', text)), "Add a VPC resource."),
         (
@@ -109,7 +109,7 @@ def _aws_simple_web_rules(text: str) -> List[Tuple[str, bool, str]]:
     ]
 
 
-def _azure_rules(text: str) -> List[Tuple[str, bool, str]]:
+def _azure_rules(text: str) -> list[tuple[str, bool, str]]:
     return [
         (
             "Resource group",
@@ -154,7 +154,7 @@ def _azure_rules(text: str) -> List[Tuple[str, bool, str]]:
     ]
 
 
-def _gcp_rules(text: str) -> List[Tuple[str, bool, str]]:
+def _gcp_rules(text: str) -> list[tuple[str, bool, str]]:
     return [
         (
             "VPC",
@@ -183,7 +183,7 @@ def _gcp_rules(text: str) -> List[Tuple[str, bool, str]]:
         ),
         (
             "Load balancing",
-            bool(re.search(r'google_compute_(forwarding_rule|url_map|backend_service)', text)),
+            bool(re.search(r"google_compute_(forwarding_rule|url_map|backend_service)", text)),
             "Add load balancer resources when the diagram shows a GLB/HTTPS front end.",
         ),
         (
@@ -202,9 +202,9 @@ def _gcp_rules(text: str) -> List[Tuple[str, bool, str]]:
 def analyze_diagram_match(
     *,
     cloud_provider: str,
-    files: Dict[str, str],
+    files: dict[str, str],
     resources_identified: Sequence[str],
-) -> Tuple[int, List[str]]:
+) -> tuple[int, list[str]]:
     """Return (match_percent, improvement_advice)."""
     text = _blob(files, resources_identified)
     provider = cloud_provider.lower().strip()

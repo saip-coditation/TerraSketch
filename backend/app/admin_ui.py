@@ -111,8 +111,8 @@ def mount_admin(app) -> None:
         return
 
     secret = (
-        (_settings.ADMIN_SESSION_SECRET or _settings.JWT_SECRET or "change-me-admin-session").strip()
-    )
+        _settings.ADMIN_SESSION_SECRET or _settings.JWT_SECRET or "change-me-admin-session"
+    ).strip()
     authentication_backend = AdminAuth(secret_key=secret)
     admin = Admin(
         app,
@@ -124,4 +124,6 @@ def mount_admin(app) -> None:
     admin.add_view(UserAdmin)
     admin.add_view(GenerationAdmin)
     admin.add_view(FeedbackAdmin)
-    logger.info("Admin UI mounted at /admin (user=%s)", (_settings.ADMIN_UI_USER or "admin").strip())
+    logger.info(
+        "Admin UI mounted at /admin (user=%s)", (_settings.ADMIN_UI_USER or "admin").strip()
+    )

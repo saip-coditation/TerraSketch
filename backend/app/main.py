@@ -22,6 +22,7 @@ from app.api.routes import auth as auth_routes
 from app.api.routes import feedback as feedback_routes
 from app.api.routes import generate as generate_routes
 from app.api.routes import history as history_routes
+from app.api.routes import v2_generate as v2_generate_routes
 from app.core.config import get_settings
 from app.core.limiter import limiter
 from app.db.schemas import HealthResponse
@@ -48,7 +49,9 @@ app.add_middleware(RequestIdMiddleware)
 
 _admin_pw = (settings.ADMIN_UI_PASSWORD or "").strip()
 if _admin_pw:
-    _sess = (settings.ADMIN_SESSION_SECRET or settings.JWT_SECRET or "change-me-admin-session").strip()
+    _sess = (
+        settings.ADMIN_SESSION_SECRET or settings.JWT_SECRET or "change-me-admin-session"
+    ).strip()
     app.add_middleware(
         SessionMiddleware,
         secret_key=_sess,
@@ -146,6 +149,7 @@ def health() -> HealthResponse:
 
 app.include_router(auth_routes.router, prefix="/api", tags=["auth"])
 app.include_router(generate_routes.router, prefix="/api", tags=["generate"])
+app.include_router(v2_generate_routes.router, prefix="/api", tags=["generate-v2"])
 app.include_router(history_routes.router, prefix="/api", tags=["history"])
 app.include_router(feedback_routes.router, prefix="/api", tags=["feedback"])
 

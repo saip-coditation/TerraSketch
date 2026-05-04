@@ -38,7 +38,9 @@ def _token_for_user(user: models.User) -> TokenResponse:
     summary="Create an account (email stored for product updates if you opt in)",
 )
 @limiter.limit(_settings.RATE_LIMIT_AUTH)
-def register(request: Request, payload: UserRegister, db: Session = Depends(get_db)) -> TokenResponse:
+def register(
+    request: Request, payload: UserRegister, db: Session = Depends(get_db)
+) -> TokenResponse:
     email_norm = payload.email.strip().lower()
     existing = db.scalars(select(models.User).where(models.User.email == email_norm)).first()
     if existing:
@@ -63,7 +65,11 @@ def register(request: Request, payload: UserRegister, db: Session = Depends(get_
 def login(request: Request, payload: UserLogin, db: Session = Depends(get_db)) -> TokenResponse:
     email_norm = payload.email.strip().lower()
     user = db.scalars(select(models.User).where(models.User.email == email_norm)).first()
-    if not user or not user.password_hash or not verify_password(payload.password, user.password_hash):
+    if (
+        not user
+        or not user.password_hash
+        or not verify_password(payload.password, user.password_hash)
+    ):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     return _token_for_user(user)
 

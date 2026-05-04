@@ -6,7 +6,6 @@
 #   Restart npm run dev after changing .env.
 #
 # Tunnel only reaches port 5173; Vite proxies /api and /admin → :8000.
-# More detail: docs/PUBLIC_TUNNEL.md
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -100,7 +99,7 @@ if [[ "$USE_TUNNEL" -eq 1 ]]; then
     open_in_terminal "TerraSketch Cloudflare tunnel" "$tunnel_cmd"
   else
     echo ""
-    echo "cloudflared not in PATH. Install: see docs/PUBLIC_TUNNEL.md"
+    echo "cloudflared not in PATH. Install: brew install cloudflared (macOS) or see https://developers.cloudflare.com/cloudflared/"
     echo "Then run: cloudflared tunnel --url http://127.0.0.1:5173"
   fi
 fi

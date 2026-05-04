@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Optional
+from typing import Annotated
 
 import jwt
 from fastapi import Depends, Header, HTTPException, status
@@ -16,7 +16,7 @@ __all__ = ["get_db", "get_optional_user", "get_current_user"]
 
 
 def get_optional_user(
-    authorization: Annotated[Optional[str], Header()] = None,
+    authorization: Annotated[str | None, Header()] = None,
     db: Session = Depends(get_db),
 ) -> models.User | None:
     if not authorization or not authorization.lower().startswith("bearer "):

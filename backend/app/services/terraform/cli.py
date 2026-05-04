@@ -7,10 +7,10 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 
-def run_terraform_validate(files: Dict[str, str]) -> Dict[str, Any]:
+def run_terraform_validate(files: dict[str, str]) -> dict[str, Any]:
     """Run terraform init (no backend) and validate. Returns a JSON-serializable dict."""
     if not shutil.which("terraform"):
         return {
@@ -66,7 +66,7 @@ def run_terraform_validate(files: Dict[str, str]) -> Dict[str, Any]:
         return {"valid": False, "step": "error", "stderr": str(exc)}
 
 
-def run_terraform_fmt_check(files: Dict[str, str]) -> Dict[str, Any]:
+def run_terraform_fmt_check(files: dict[str, str]) -> dict[str, Any]:
     if not shutil.which("terraform"):
         return {"skipped": True, "reason": "terraform CLI not found in PATH"}
     try:

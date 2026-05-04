@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 
 def summarize_file_diffs(
-    old_files: Dict[str, str] | None,
-    new_files: Dict[str, str],
-) -> Dict[str, Any]:
+    old_files: dict[str, str] | None,
+    new_files: dict[str, str],
+) -> dict[str, Any]:
     if not old_files:
         return {}
     summary: dict[str, dict[str, Any]] = {}
@@ -21,7 +21,11 @@ def summarize_file_diffs(
         o_lines = len(o.splitlines()) if o else 0
         n_lines = len(n.splitlines()) if n else 0
         summary[name] = {
-            "status": "removed" if name not in new_files else "added" if name not in old_files else "changed",
+            "status": "removed"
+            if name not in new_files
+            else "added"
+            if name not in old_files
+            else "changed",
             "lines_before": o_lines,
             "lines_after": n_lines,
             "delta_lines": n_lines - o_lines,

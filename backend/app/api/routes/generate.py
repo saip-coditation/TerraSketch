@@ -10,18 +10,18 @@ from app.core.config import get_settings
 from app.core.limiter import limiter
 from app.db import models
 from app.db.schemas import GenerateRequest, GenerateResponse
-from app.services.aws_microservice_canonical import (
+from app.services.llm.router import LLMServiceError, generate_terraform
+from app.services.quality.diagram_match import analyze_diagram_match
+from app.services.quality.secret_scan import scan_generated_files
+from app.services.templates.aws_microservice import (
     canonical_resources_list,
     maybe_replace_with_canonical_microservice,
 )
-from app.services.diagram_match_analyzer import analyze_diagram_match
-from app.services.file_diff import summarize_file_diffs
-from app.services.generation_hints import build_generation_hints
-from app.services.llm_service import LLMServiceError, generate_terraform
-from app.services.secret_scan import scan_generated_files
-from app.services.terraform_cli import run_terraform_fmt_check, run_terraform_validate
-from app.services.terraform_parser import TerraformParseError
-from app.services.terraform_postprocess import postprocess_generated_files
+from app.services.templates.generation_hints import build_generation_hints
+from app.services.terraform.cli import run_terraform_fmt_check, run_terraform_validate
+from app.services.terraform.file_diff import summarize_file_diffs
+from app.services.terraform.parser import TerraformParseError
+from app.services.terraform.postprocess import postprocess_generated_files
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -207,7 +207,9 @@ def post_generate(
     response_model=GenerateResponse,
     summary="Fetch a single generation by ID",
 )
-def get_generation(generation_id: str, request: Request, db: Session = Depends(get_db)) -> GenerateResponse:
+def get_generation(
+    generation_id: str, request: Request, db: Session = Depends(get_db)
+) -> GenerateResponse:
     record = db.get(models.Generation, generation_id)
     if not record:
         raise HTTPException(status_code=404, detail="Generation not found")

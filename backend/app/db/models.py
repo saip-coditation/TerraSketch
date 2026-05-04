@@ -39,7 +39,7 @@ class User(Base):
     marketing_opt_in: Mapped[bool] = mapped_column(default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
-    generations: Mapped[list["Generation"]] = relationship(back_populates="user")
+    generations: Mapped[list[Generation]] = relationship(back_populates="user")
 
 
 class Generation(Base):
@@ -47,9 +47,7 @@ class Generation(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     session_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    user_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
-    )
+    user_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
 
     cloud_provider: Mapped[str] = mapped_column(String(20), nullable=False)
     environment: Mapped[str] = mapped_column(String(20), default="dev", nullable=False)
@@ -70,7 +68,7 @@ class Generation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
     user: Mapped[User | None] = relationship(back_populates="generations")
-    feedback: Mapped[list["Feedback"]] = relationship(back_populates="generation")
+    feedback: Mapped[list[Feedback]] = relationship(back_populates="generation")
 
 
 class Feedback(Base):

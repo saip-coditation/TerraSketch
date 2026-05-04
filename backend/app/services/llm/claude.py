@@ -1,4 +1,4 @@
-"""Claude (Anthropic) API integration.
+"""Claude (Anthropic) API integration — v1 path.
 
 Sends the system prompt + a user message containing either:
   - a base64 image block (when input_type == 'image'), or
@@ -13,14 +13,14 @@ import base64
 import logging
 import re
 from io import BytesIO
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from PIL import Image
 
 from app.core.config import get_settings
 from app.core.prompt_builder import SYSTEM_PROMPT, build_user_message
 from app.db.schemas import ClaudeOutput
-from app.services.terraform_parser import parse_claude_response
+from app.services.terraform.parser import parse_claude_response
 
 logger = logging.getLogger(__name__)
 
@@ -73,8 +73,7 @@ def _strip_data_url(image_input: str) -> tuple[str, str]:
 
     if media_type not in _VALID_MEDIA_TYPES:
         raise ClaudeServiceError(
-            f"Unsupported image type '{media_type or 'unknown'}'. "
-            "Use PNG, JPEG, WEBP, or GIF."
+            f"Unsupported image type '{media_type or 'unknown'}'. Use PNG, JPEG, WEBP, or GIF."
         )
 
     return media_type, data
@@ -85,10 +84,10 @@ def _build_message_content(
     provider: str,
     environment: str,
     input_type: str,
-    text_description: Optional[str],
-    image_base64: Optional[str],
-    generation_hints: Optional[str] = None,
-) -> List[Dict[str, Any]]:
+    text_description: str | None,
+    image_base64: str | None,
+    generation_hints: str | None = None,
+) -> list[dict[str, Any]]:
     user_text = build_user_message(
         provider=provider,
         environment=environment,
@@ -97,7 +96,7 @@ def _build_message_content(
         generation_hints=generation_hints,
     )
 
-    content: List[Dict[str, Any]] = []
+    content: list[dict[str, Any]] = []
     if input_type == "image" and image_base64:
         media_type, raw_b64 = _strip_data_url(image_base64)
         content.append(
@@ -120,16 +119,14 @@ def generate_terraform(
     provider: str,
     environment: str,
     input_type: str,
-    text_description: Optional[str] = None,
-    image_base64: Optional[str] = None,
-    generation_hints: Optional[str] = None,
+    text_description: str | None = None,
+    image_base64: str | None = None,
+    generation_hints: str | None = None,
 ) -> ClaudeOutput:
     """Call Claude and return the parsed Terraform output."""
     settings = get_settings()
     if not settings.ANTHROPIC_API_KEY:
-        raise ClaudeServiceError(
-            "ANTHROPIC_API_KEY is not configured. Set it in your environment."
-        )
+        raise ClaudeServiceError("ANTHROPIC_API_KEY is not configured. Set it in your environment.")
 
     try:
         from anthropic import Anthropic
@@ -168,7 +165,7 @@ def generate_terraform(
         logger.exception("Claude API call failed")
         raise ClaudeServiceError(f"Claude API call failed: {exc}") from exc
 
-    text_chunks: List[str] = []
+    text_chunks: list[str] = []
     for block in response.content or []:
         block_type = getattr(block, "type", None)
         if block_type == "text":

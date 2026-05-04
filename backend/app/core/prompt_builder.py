@@ -7,8 +7,6 @@ per-request based on input type, provider, and environment.
 
 from __future__ import annotations
 
-from typing import Optional
-
 SYSTEM_PROMPT = """You are TerraSketch, an expert Infrastructure-as-Code engineer specializing in Terraform for AWS, Azure, and GCP. Your job is to analyze cloud architecture diagrams and produce production-ready Terraform HCL code.
 
 You have deep knowledge of:
@@ -83,8 +81,8 @@ def build_user_message(
     provider: str,
     environment: str,
     input_type: str,
-    text_description: Optional[str] = None,
-    generation_hints: Optional[str] = None,
+    text_description: str | None = None,
+    generation_hints: str | None = None,
 ) -> str:
     """Construct the user-facing message body for a generation request."""
     provider = provider.lower().strip()

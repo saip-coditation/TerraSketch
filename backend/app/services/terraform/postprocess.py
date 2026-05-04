@@ -6,7 +6,6 @@ Catches recurring model mistakes without re-calling the LLM.
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Tuple
 
 _PROVIDER_AWS_START = re.compile(r"^\s*provider\s+\"aws\"\s*\{", re.MULTILINE)
 
@@ -25,14 +24,13 @@ def _remove_balanced_block_from(text: str, block_start: int, open_brace_index: i
             depth -= 1
             if depth == 0:
                 end = j + 1
-                # Drop one following newline if present
                 if end < len(text) and text[end] == "\n":
                     end += 1
                 return text[:block_start] + text[end:]
     return text
 
 
-def _strip_duplicate_provider_aws_from_main(main_tf: str, providers_tf: str) -> Tuple[str, bool]:
+def _strip_duplicate_provider_aws_from_main(main_tf: str, providers_tf: str) -> tuple[str, bool]:
     if not main_tf or not _has_provider_aws_in_providers_tf(providers_tf):
         return main_tf, False
 
@@ -56,12 +54,12 @@ def _strip_duplicate_provider_aws_from_main(main_tf: str, providers_tf: str) -> 
 
 
 def postprocess_generated_files(
-    files: Dict[str, str],
+    files: dict[str, str],
     *,
     cloud_provider: str,
-) -> Tuple[Dict[str, str], List[str]]:
+) -> tuple[dict[str, str], list[str]]:
     """Return (possibly updated files, extra assumption strings for transparency)."""
-    notes: List[str] = []
+    notes: list[str] = []
     out = dict(files)
 
     main = out.get("main.tf", "")
@@ -72,7 +70,7 @@ def postprocess_generated_files(
         if did:
             out["main.tf"] = new_main.strip() + ("\n" if new_main.strip() else "")
             notes.append(
-                "Post-process: removed duplicate `provider \"aws\"` block(s) from main.tf "
+                'Post-process: removed duplicate `provider "aws"` block(s) from main.tf '
                 "(provider should only appear in providers.tf)."
             )
 

@@ -14,7 +14,7 @@ Fallbacks: Foundry ``/models/chat/completions`` (2024-05-01-preview), then class
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional, Union
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -22,7 +22,7 @@ import httpx
 from app.core.config import get_settings
 from app.core.prompt_builder import SYSTEM_PROMPT, build_user_message
 from app.db.schemas import ClaudeOutput
-from app.services.terraform_parser import parse_claude_response
+from app.services.terraform.parser import parse_claude_response
 
 logger = logging.getLogger(__name__)
 
@@ -208,11 +208,8 @@ def _call_classic_azure_openai(
     try:
         from openai import AzureOpenAI
     except ImportError as exc:
-        raise AzureOpenAIError(
-            "openai SDK not installed. Run `pip install openai`."
-        ) from exc
+        raise AzureOpenAIError("openai SDK not installed. Run `pip install openai`.") from exc
 
-    # Classic SDK expects resource root, e.g. https://x.openai.azure.com (no /openai/v1)
     classic_root = _foundry_base_url(endpoint)
 
     def _api_versions_to_try() -> list[str]:
@@ -271,7 +268,9 @@ def _call_classic_azure_openai(
                 )
             )
             logger.exception("Azure OpenAI classic call failed")
-            raise AzureOpenAIError(f"Azure OpenAI call failed: {message}", quota_exhausted=is_quota) from exc
+            raise AzureOpenAIError(
+                f"Azure OpenAI call failed: {message}", quota_exhausted=is_quota
+            ) from exc
 
     logger.error("Azure OpenAI classic: all API versions failed: %s", last_exc)
     raise AzureOpenAIError(
@@ -284,9 +283,9 @@ def generate_terraform(
     provider: str,
     environment: str,
     input_type: str,
-    text_description: Optional[str] = None,
-    image_base64: Optional[str] = None,
-    generation_hints: Optional[str] = None,
+    text_description: str | None = None,
+    image_base64: str | None = None,
+    generation_hints: str | None = None,
 ) -> ClaudeOutput:
     settings = get_settings()
     endpoint = (settings.AZURE_OPENAI_ENDPOINT or "").strip()
@@ -310,7 +309,7 @@ def generate_terraform(
 
     if input_type == "image" and image_base64:
         image_url = _ensure_data_url(image_base64)
-        user_content: Union[str, list] = [
+        user_content: str | list = [
             {"type": "text", "text": user_text},
             {"type": "image_url", "image_url": {"url": image_url, "detail": "high"}},
         ]
@@ -325,7 +324,6 @@ def generate_terraform(
     errors: list[str] = []
     max_out = settings.AZURE_OPENAI_MAX_TOKENS
 
-    # 1) Preferred: OpenAI v1-compatible endpoint (works for Foundry + Azure OpenAI per MS docs)
     try:
         raw_text = _call_openai_v1_chat(
             endpoint=endpoint,
@@ -339,7 +337,6 @@ def generate_terraform(
         errors.append(str(exc))
         logger.warning("OpenAI v1 path failed, trying fallbacks: %s", exc)
 
-    # 2) Foundry legacy REST (services.ai.azure.com only)
     if _is_foundry_services_host(endpoint):
         try:
             raw_text = _call_foundry_models_chat_completions(
@@ -354,7 +351,6 @@ def generate_terraform(
             errors.append(str(exc))
             logger.warning("Foundry /models path failed: %s", exc)
 
-    # 3) Classic AzureOpenAI (api-version on deployments path)
     try:
         raw_text = _call_classic_azure_openai(
             endpoint=endpoint,
@@ -369,6 +365,5 @@ def generate_terraform(
         errors.append(str(exc))
 
     raise AzureOpenAIError(
-        "All Azure chat completion strategies failed. Errors: "
-        + " | ".join(errors)
+        "All Azure chat completion strategies failed. Errors: " + " | ".join(errors)
     )

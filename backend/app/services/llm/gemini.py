@@ -6,14 +6,13 @@ import base64
 import logging
 import re
 from io import BytesIO
-from typing import Optional
 
 from PIL import Image
 
 from app.core.config import get_settings
 from app.core.prompt_builder import SYSTEM_PROMPT, build_user_message
 from app.db.schemas import ClaudeOutput
-from app.services.terraform_parser import parse_claude_response
+from app.services.terraform.parser import parse_claude_response
 
 logger = logging.getLogger(__name__)
 
@@ -72,9 +71,9 @@ def generate_terraform(
     provider: str,
     environment: str,
     input_type: str,
-    text_description: Optional[str] = None,
-    image_base64: Optional[str] = None,
-    generation_hints: Optional[str] = None,
+    text_description: str | None = None,
+    image_base64: str | None = None,
+    generation_hints: str | None = None,
 ) -> ClaudeOutput:
     settings = get_settings()
     if not settings.GEMINI_API_KEY:
@@ -126,7 +125,9 @@ def generate_terraform(
         is_quota = any(
             token in low for token in ("quota", "resource_exhausted", "429", "billing", "credit")
         )
-        raise GeminiServiceError(f"Gemini API call failed: {message}", quota_exhausted=is_quota) from exc
+        raise GeminiServiceError(
+            f"Gemini API call failed: {message}", quota_exhausted=is_quota
+        ) from exc
 
     if not raw_text:
         raise GeminiServiceError("Gemini returned an empty response")

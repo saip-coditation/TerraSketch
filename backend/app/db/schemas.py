@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
-
 
 CloudProvider = Literal["aws", "azure", "gcp"]
 Environment = Literal["dev", "staging", "production"]
@@ -22,21 +21,21 @@ class GenerateRequest(BaseModel):
         default="auto",
         description="Steers the model toward a common architecture pattern.",
     )
-    correction_note: Optional[str] = Field(
+    correction_note: str | None = Field(
         default=None,
         description="Extra instructions merged into the prompt (refinement / fix-ups).",
         max_length=8000,
     )
-    compare_generation_id: Optional[str] = Field(
+    compare_generation_id: str | None = Field(
         default=None,
         description="If set, summarize file-level diffs vs this prior generation.",
         max_length=36,
     )
-    image_base64: Optional[str] = Field(
+    image_base64: str | None = Field(
         default=None,
         description="data URL or raw base64 image content. Required when input_type='image'.",
     )
-    text_description: Optional[str] = Field(
+    text_description: str | None = Field(
         default=None,
         description="Text description of the architecture. Required when input_type='text' or 'draw'.",
     )
@@ -44,7 +43,7 @@ class GenerateRequest(BaseModel):
 
     @field_validator("image_base64")
     @classmethod
-    def _validate_image_size(cls, value: Optional[str]) -> Optional[str]:
+    def _validate_image_size(cls, value: str | None) -> str | None:
         if value is None:
             return value
         if len(value) > 12_000_000:
@@ -71,16 +70,16 @@ class GenerateResponse(BaseModel):
     generation_id: str
     cloud_provider: CloudProvider
     environment: Environment
-    resources_identified: List[str] = []
-    assumptions: List[str] = []
-    files: Dict[str, str]
-    usage_instructions: Optional[str] = None
+    resources_identified: list[str] = []
+    assumptions: list[str] = []
+    files: dict[str, str]
+    usage_instructions: str | None = None
     diagram_match_percent: int = 0
-    improvement_advice: List[str] = []
-    security_warnings: List[str] = []
-    terraform_validation: Optional[Dict[str, Any]] = None
-    file_diff_summary: Optional[Dict[str, Any]] = None
-    request_id: Optional[str] = None
+    improvement_advice: list[str] = []
+    security_warnings: list[str] = []
+    terraform_validation: dict[str, Any] | None = None
+    file_diff_summary: dict[str, Any] | None = None
+    request_id: str | None = None
     created_at: datetime
 
 
@@ -89,22 +88,22 @@ class HistoryItem(BaseModel):
     cloud_provider: CloudProvider
     environment: Environment
     input_type: InputType
-    resources_identified: List[str] = []
-    diagram_match_percent: Optional[int] = None
+    resources_identified: list[str] = []
+    diagram_match_percent: int | None = None
     created_at: datetime
 
 
 class FeedbackRequest(BaseModel):
     generation_id: str
     rating: int = Field(ge=1, le=5)
-    comment: Optional[str] = None
+    comment: str | None = None
 
 
 class FeedbackResponse(BaseModel):
     id: str
     generation_id: str
     rating: int
-    comment: Optional[str] = None
+    comment: str | None = None
     created_at: datetime
 
 
@@ -112,10 +111,10 @@ class ClaudeOutput(BaseModel):
     """The expected JSON shape coming back from Claude."""
 
     provider: CloudProvider
-    assumptions: List[str] = []
-    resources_identified: List[str] = []
-    files: Dict[str, str]
-    usage_instructions: Optional[str] = None
+    assumptions: list[str] = []
+    resources_identified: list[str] = []
+    files: dict[str, str]
+    usage_instructions: str | None = None
 
 
 class HealthResponse(BaseModel):
@@ -130,13 +129,13 @@ class HealthResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: str
-    extra: Optional[Dict[str, Any]] = None
+    extra: dict[str, Any] | None = None
 
 
 class UserRegister(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
-    name: Optional[str] = Field(default=None, max_length=255)
+    name: str | None = Field(default=None, max_length=255)
     marketing_opt_in: bool = False
 
 
@@ -148,7 +147,7 @@ class UserLogin(BaseModel):
 class UserPublic(BaseModel):
     id: str
     email: str
-    name: Optional[str] = None
+    name: str | None = None
     marketing_opt_in: bool = False
 
 

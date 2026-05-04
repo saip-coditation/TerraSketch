@@ -18,9 +18,7 @@ router = APIRouter()
     status_code=status.HTTP_201_CREATED,
     summary="Submit a 1-5 star rating + optional comment for a generation",
 )
-def post_feedback(
-    payload: FeedbackRequest, db: Session = Depends(get_db)
-) -> FeedbackResponse:
+def post_feedback(payload: FeedbackRequest, db: Session = Depends(get_db)) -> FeedbackResponse:
     generation = db.get(models.Generation, payload.generation_id)
     if not generation:
         raise HTTPException(status_code=404, detail="Generation not found")

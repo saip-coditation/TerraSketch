@@ -50,7 +50,7 @@ alembic upgrade head
 
 ### Open the app on your phone over the internet
 
-If **Snap / ngrok** fails (`unable to contact snap store`), use **Cloudflare Quick Tunnel** or a manual ngrok binary — see [docs/PUBLIC_TUNNEL.md](../docs/PUBLIC_TUNNEL.md).
+Use a Cloudflare Quick Tunnel — `cloudflared tunnel --url http://127.0.0.1:5173`. The repo's `dev.sh` automates this. See the root `README.md` "Public URL" section for full steps.
 
 ## Environment variables
 

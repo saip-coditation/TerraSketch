@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict
+from typing import Any
 
 from app.db.schemas import ClaudeOutput
 
@@ -72,7 +72,7 @@ def parse_claude_response(raw_text: str) -> ClaudeOutput:
     json_text = _extract_json_block(raw_text)
 
     try:
-        data: Dict[str, Any] = json.loads(json_text)
+        data: dict[str, Any] = json.loads(json_text)
     except json.JSONDecodeError as exc:
         raise TerraformParseError(f"Invalid JSON returned by AI: {exc}") from exc
 

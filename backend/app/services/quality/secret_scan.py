@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, List
 
 _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("Possible Anthropic-style API key", re.compile(r"sk-ant-api[a-zA-Z0-9_-]{10,}")),
@@ -13,7 +12,7 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 ]
 
 
-def scan_generated_files(files: Dict[str, str]) -> List[str]:
+def scan_generated_files(files: dict[str, str]) -> list[str]:
     warnings: list[str] = []
     seen: set[str] = set()
     for path, content in files.items():
@@ -25,7 +24,9 @@ def scan_generated_files(files: Dict[str, str]) -> List[str]:
                 key = f"{label}:{path}"
                 if key not in seen:
                     seen.add(key)
-                    warnings.append(f"{label} (check {path}) — rotate any real credential and use variables.")
+                    warnings.append(
+                        f"{label} (check {path}) — rotate any real credential and use variables."
+                    )
         if "password" in lower and re.search(r'password\s*=\s*"[^"]{8,}"', content):
             key = f"hardcoded-password:{path}"
             if key not in seen:

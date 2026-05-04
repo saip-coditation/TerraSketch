@@ -10,11 +10,31 @@ Monaco-based code viewer.
 
 ```
 .
-├── backend/           # FastAPI + SQLAlchemy + Alembic + Anthropic SDK
+├── backend/           # FastAPI + SQLAlchemy + Alembic + agent graph (v2) + v1 LLM router
 ├── frontend/          # React + Vite + Tailwind + Monaco
-├── run_terrasketch.sh # Opens backend + Vite + Cloudflare tunnel (GUI terminals)
+├── examples/          # Sample diagram + generated Terraform (use as benchmark inputs)
+├── scripts/           # LAN dev sync helper
+├── dev.sh             # Opens backend + Vite + Cloudflare tunnel (GUI terminals)
 ├── render.yaml        # Render blueprint (backend + free Postgres)
+├── context.md         # Handover doc — what was built / decisions / dev follow-ups
+├── todo.md            # Backlog — P1/P2/P3 across architecture, Claude usage, memory, etc.
 └── README.md
+```
+
+The backend uses subpackages under `backend/app/`:
+
+```
+app/
+├── agents/        # v2 agent graph (understand → plan → synthesize → validate↔fixer)
+├── api/routes/    # FastAPI routers — incl. /api/generate (v1) and /api/v2/generate (agents)
+├── core/          # config, limiter, security, v1 prompt builder
+├── db/            # SQLAlchemy models, Pydantic schemas, session
+├── middleware/    # request_id
+└── services/
+    ├── llm/         # v1 clients (claude, gemini, azure_openai, mock) + router
+    ├── terraform/   # parser, postprocess, CLI wrapper, file_diff
+    ├── quality/     # diagram_match, secret_scan
+    └── templates/   # generation_hints, aws_microservice/ (HCL + loader)
 ```
 
 ## What's inside
@@ -64,18 +84,18 @@ npm run dev
 
 Visit [http://localhost:5173](http://localhost:5173).
 
-### One-command launcher (`run_terrasketch.sh`)
+### One-command launcher (`dev.sh`)
 
 From the repo root (needs a GUI terminal like GNOME Terminal):
 
 ```bash
-chmod +x run_terrasketch.sh
-./run_terrasketch.sh
+chmod +x dev.sh
+./dev.sh
 ```
 
 This opens **three** windows: **Uvicorn** on `0.0.0.0:8000`, **Vite** with
 `--host 0.0.0.0`, and **Cloudflare quick tunnel** to `http://127.0.0.1:5173`
-(after briefly waiting for Vite to respond). Use `./run_terrasketch.sh
+(after briefly waiting for Vite to respond). Use `./dev.sh
 --no-tunnel` if you only want backend + frontend (e.g. LAN testing).
 
 ### Public URL (Cloudflare quick tunnel) — manual steps
@@ -90,7 +110,7 @@ VITE_API_URL=
 
 Restart `npm run dev` after changing it.
 
-**2. Run the app (two terminals)** — Or use `run_terrasketch.sh` for these.
+**2. Run the app (two terminals)** — Or use `dev.sh` for these.
 
 - **Terminal A — backend**
 
@@ -132,8 +152,6 @@ tunnel origin to `backend/.env` **`ALLOWED_ORIGINS`** (comma-separated), e.g.
 `https://….trycloudflare.com/admin/user/list` while `ADMIN_UI_PASSWORD` is set
 and Uvicorn is running. Restart `npm run dev` after changing `vite.config.js`.
 
-More detail: [`docs/PUBLIC_TUNNEL.md`](docs/PUBLIC_TUNNEL.md).
-
 ## Deploying for free
 
 | Layer | Host | Free tier |
@@ -165,11 +183,13 @@ keep costs predictable.
 
 ## The Super Prompt
 
-The system prompt sent to Claude lives at
-[`backend/app/core/prompt_builder.py`](backend/app/core/prompt_builder.py).
-It's the production-grade prompt described in
-`IMP_TerraSketch_ProductDocument.md`, with chain-of-thought triggers
-and explicit JSON output formatting baked in.
+The v1 system prompt lives at
+[`backend/app/core/prompt_builder.py`](backend/app/core/prompt_builder.py)
+— a single prompt with chain-of-thought triggers and JSON output rules.
+
+The v2 agent graph uses smaller, per-node prompts under
+[`backend/app/agents/prompts.py`](backend/app/agents/prompts.py); see
+[`context.md`](context.md) for the agentic architecture and handover notes.
 
 ## Tech stack
 
