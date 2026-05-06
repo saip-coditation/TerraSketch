@@ -100,7 +100,7 @@ async def run_validate_fix(state: GraphState) -> GraphState:
                 skipped=True,
                 skip_reason=str(report.get("reason") or "skipped"),
             )
-            state.trace.validate = NodeOutput(
+            state.trace.validate_node = NodeOutput(
                 node="validate",
                 reasoning=f"terraform CLI unavailable: {report.get('reason')}. Skipped.",
                 confidence=0.0,
@@ -111,7 +111,7 @@ async def run_validate_fix(state: GraphState) -> GraphState:
 
         if report.get("valid"):
             state.validation = ValidationReport(valid=True, iterations=iteration)
-            state.trace.validate = NodeOutput(
+            state.trace.validate_node = NodeOutput(
                 node="validate",
                 reasoning=(
                     "Validated on first try."
@@ -131,7 +131,7 @@ async def run_validate_fix(state: GraphState) -> GraphState:
                 iterations=iteration,
                 final_errors=errors,
             )
-            state.trace.validate = NodeOutput(
+            state.trace.validate_node = NodeOutput(
                 node="validate",
                 reasoning=f"Could not fix in {MAX_FIX_ITERATIONS} iterations. Returning last attempt.",
                 confidence=0.0,

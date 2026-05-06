@@ -100,6 +100,10 @@ class ValidationReport(BaseModel):
 
 
 class GenerationTrace(BaseModel):
+    """Per-step audit trail. JSON still uses key ``validate`` (see ``validate_node`` alias)."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
     cloud_provider: CloudProvider
     environment: Environment
     started_at: datetime
@@ -108,7 +112,7 @@ class GenerationTrace(BaseModel):
     plan: NodeOutput | None = None
     synthesize: NodeOutput | None = None
     fixer_iterations: list[NodeOutput] = []
-    validate: NodeOutput | None = None
+    validate_node: NodeOutput | None = Field(default=None, alias="validate")
 
 
 class GraphState(BaseModel):

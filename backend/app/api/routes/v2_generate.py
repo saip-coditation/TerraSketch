@@ -6,8 +6,6 @@ the agent path is hardened. Persistence of agent_trace is a dev TODO —
 see context.md.
 """
 
-from __future__ import annotations
-
 import logging
 
 from fastapi import APIRouter, HTTPException, Request, status
@@ -20,7 +18,6 @@ from app.db.schemas import GenerateRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-_settings = get_settings()
 
 
 @router.post(
@@ -29,7 +26,7 @@ _settings = get_settings()
     status_code=status.HTTP_201_CREATED,
     summary="(v2) Agentic Terraform generation with per-step reasoning trace",
 )
-@limiter.limit(_settings.RATE_LIMIT_GENERATE)
+@limiter.limit(get_settings().RATE_LIMIT_GENERATE)
 async def post_generate_v2(request: Request, payload: GenerateRequest) -> AgentRunResult:
     try:
         payload.ensure_input_consistency()

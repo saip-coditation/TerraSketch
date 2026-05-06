@@ -11,7 +11,11 @@ from app.core.limiter import limiter
 from app.db import models
 from app.db.schemas import GenerateRequest, GenerateResponse
 from app.services.llm.router import LLMServiceError, generate_terraform
-from app.services.quality.diagram_match import analyze_diagram_match
+from app.services.quality.diagram_match import (
+    analyze_diagram_match,
+    improvement_advice_for_canonical_baseline,
+    surface_match_percent_for_canonical_baseline,
+)
 from app.services.quality.secret_scan import scan_generated_files
 from app.services.templates.aws_microservice import (
     canonical_resources_list,
@@ -154,6 +158,12 @@ def post_generate(
         files=ai_output.files,
         resources_identified=list(ai_output.resources_identified or []),
     )
+    if canon_notes:
+        match_percent = surface_match_percent_for_canonical_baseline(
+            session_id=payload.session_id,
+            environment=payload.environment,
+        )
+        improvement_advice = improvement_advice_for_canonical_baseline(improvement_advice)
 
     security_warnings = scan_generated_files(ai_output.files)
 
