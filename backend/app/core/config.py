@@ -7,6 +7,9 @@ from functools import lru_cache
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Used only when APP_ENV=development and ADMIN_UI_PASSWORD is unset (see resolved_admin_ui_password).
+DEV_ADMIN_UI_PASSWORD_FALLBACK: str = "terrasketch-dev-admin"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -21,9 +24,17 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
 
     ANTHROPIC_API_KEY: str = Field(default="", description="Anthropic Claude API key")
-    ANTHROPIC_MODEL: str = "claude-sonnet-4-20250514"
+    ANTHROPIC_MODEL: str = "claude-sonnet-4-6"
     # Higher values reduce truncation of large JSON Terraform payloads; lower if the API rejects the request.
     ANTHROPIC_MAX_TOKENS: int = Field(default=16384, ge=1024, le=200000)
+    AGENT_MAX_FIX_ITERATIONS: int = Field(default=3, ge=1, le=10)
+    AGENT_MOCK_MODE: bool = Field(
+        default=False,
+        description="When true, v2 agent nodes return static mock responses without calling any LLM. Useful for testing the pipeline without an API key.",
+    )
+    ANTHROPIC_EXTENDED_THINKING: bool = False
+    ANTHROPIC_THINKING_BUDGET_TOKENS: int = Field(default=4096, ge=1024, le=32000)
+    ANTHROPIC_STREAM: bool = False
     GEMINI_API_KEY: str = Field(default="", description="Google Gemini API key")
     GEMINI_MODEL: str = "gemini-2.0-flash"
     LLM_PROVIDER: str = "anthropic"
@@ -51,9 +62,11 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "change-me-in-production-use-a-long-random-string"
     JWT_EXPIRE_MINUTES: int = 60 * 24 * 7
 
-    # Optional Django-style DB admin at /admin (SQLAdmin). Set password to enable; keep secret in production.
+    # Optional Django-style DB admin at /admin (SQLAdmin).
     ADMIN_UI_USER: str = "admin"
     ADMIN_UI_PASSWORD: str = ""
+    # When false, /admin is never mounted (even in development).
+    ADMIN_UI_ENABLED: bool = True
     ADMIN_SESSION_SECRET: str = ""
 
     # When true, skip `terraform validate` subprocess after generation (faster local dev).
@@ -62,6 +75,25 @@ class Settings(BaseSettings):
     @property
     def allowed_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
+
+    def resolved_admin_ui_password(self) -> str:
+        """Password SQLAdmin uses for login. Non-empty enables /admin (see main.py)."""
+        if not self.ADMIN_UI_ENABLED:
+            return ""
+        explicit = (self.ADMIN_UI_PASSWORD or "").strip()
+        if explicit:
+            return explicit
+        if self.APP_ENV.lower() == "development":
+            return DEV_ADMIN_UI_PASSWORD_FALLBACK
+        return ""
+
+    @property
+    def uses_dev_admin_password_default(self) -> bool:
+        return (
+            self.ADMIN_UI_ENABLED
+            and self.APP_ENV.lower() == "development"
+            and not (self.ADMIN_UI_PASSWORD or "").strip()
+        )
 
     @field_validator(
         "AZURE_OPENAI_ENDPOINT",

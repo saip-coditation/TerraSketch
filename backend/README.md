@@ -59,16 +59,23 @@ Use a Cloudflare Quick Tunnel — `cloudflared tunnel --url http://127.0.0.1:517
 | `LLM_PROVIDER` | no | `anthropic` | `anthropic`, `gemini`, `azure`, or `mock` |
 | `LLM_FALLBACK_PROVIDER` | no | `mock` | When `mock`, quota/rate-limit errors fall back to template output |
 | `ANTHROPIC_API_KEY` | if `LLM_PROVIDER=anthropic` | — | Claude API key |
-| `ANTHROPIC_MODEL` | no | `claude-sonnet-4-20250514` | Model to call |
+| `ANTHROPIC_MODEL` | no | `claude-sonnet-4-6` | Model to call |
+| `ANTHROPIC_MAX_TOKENS` | no | `16384` | Max output tokens; increase for large diagrams |
+| `ANTHROPIC_EXTENDED_THINKING` | no | `false` | Enable Claude extended thinking (requires SDK ≥ 0.50) |
+| `ANTHROPIC_THINKING_BUDGET_TOKENS` | no | `4096` | Token budget for extended thinking |
+| `ANTHROPIC_STREAM` | no | `false` | Stream responses (improves UX on slow connections) |
+| `AGENT_MAX_FIX_ITERATIONS` | no | `3` | Max terraform-validate fix iterations in v2 |
+| `AGENT_MOCK_MODE` | no | `false` | When `true`, v2 agent nodes return static mock responses — no API key needed. For pipeline testing. |
 | `GEMINI_API_KEY` | if `LLM_PROVIDER=gemini` | — | Google AI Studio / Gemini API key |
 | `GEMINI_MODEL` | no | `gemini-2.0-flash` | Gemini model id |
 | `AZURE_OPENAI_ENDPOINT` | if `LLM_PROVIDER=azure` | — | e.g. `https://YOUR_RESOURCE.openai.azure.com` |
 | `AZURE_OPENAI_API_KEY` | if `LLM_PROVIDER=azure` | — | Azure OpenAI key |
 | `AZURE_OPENAI_DEPLOYMENT` | if `LLM_PROVIDER=azure` | — | **Deployment name** for GPT-4o (e.g. `gpt-4o`) |
-| `AZURE_OPENAI_API_VERSION` | no | `2024-08-01-preview` | REST API version |
+| `AZURE_OPENAI_API_VERSION` | no | `2024-10-21` | REST API version |
 | `DATABASE_URL` | no | `sqlite:///./terrasketch.db` | SQLAlchemy URL |
 | `ALLOWED_ORIGINS` | no | `http://localhost:5173,http://localhost:3000` | CSV of CORS origins |
 | `RATE_LIMIT_GENERATE` | no | `5/minute` | slowapi rate per IP |
+| `SKIP_TERRAFORM_VALIDATE` | no | `false` | Skip `terraform validate` subprocess (set `true` in prod) |
 | `APP_ENV` | no | `development` | Free-form env tag |
 | `LOG_LEVEL` | no | `INFO` | Python logging level |
 | `ADMIN_UI_PASSWORD` | no | — | If set, enables SQLAdmin at `/admin` |
@@ -105,13 +112,19 @@ AZURE_OPENAI_API_VERSION=2024-10-21
 | `GET` | `/api/auth/me` | Current user (Bearer token) |
 | `POST` | `/api/auth/attach-session` | Link anonymous `session_id` rows to your user (Bearer) |
 | `POST` | `/api/auth/logout` | No-op; client discards token |
-| `POST` | `/api/generate` | Generate Terraform (optional `Authorization: Bearer` sets `user_id`) |
+| `POST` | `/api/generate` | v1: Generate Terraform (async, tool-use, GenerationPipeline) |
 | `GET` | `/api/generation/{id}` | Fetch a single generation |
 | `GET` | `/api/history` | Signed in: Bearer token. Anonymous: `?session_id=...` |
 | `POST` | `/api/feedback` | Rate a generation (1-5 stars) |
 | `GET` | `/api/health` | Health check |
+| `POST` | `/api/v2/generate` | v2: Agentic generation (8-node graph, per-step trace, HITL) |
+| `POST` | `/api/v2/generation/{id}/ir/edit` | (HITL) Replace DiagramIR, re-run from Plan |
+| `POST` | `/api/v2/generation/{id}/plan/edit` | (HITL) Replace ResourcePlan, re-run from Synthesize |
+| `POST` | `/api/v2/generation/{id}/files/edit` | (HITL) Replace files, re-run validation |
+| `POST` | `/api/v2/generation/{id}/critique/dismiss` | (HITL) Dismiss a critique finding as preference |
+| `POST` | `/api/v2/generation/{id}/ir/resolve-ambiguities` | (HITL/Batch) Batch IR ambiguity resolution |
 
-See `app/db/schemas.py` for full request/response schemas.
+See `app/db/schemas.py` for full request/response schemas. See `app/agents/` for the v2 node graph.
 
 ## Deploying to Render
 

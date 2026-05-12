@@ -64,6 +64,8 @@ class Generation(Base):
     security_warnings: Mapped[list | None] = mapped_column(JSON, nullable=True)
     terraform_validation: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     file_diff_summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    agent_trace: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    raw_response: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -84,3 +86,21 @@ class Feedback(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
     generation: Mapped[Generation] = relationship(back_populates="feedback")
+
+
+class UserPreference(Base):
+    """Per-user preferences mined from critique dismissals and explicit settings.
+
+    dismissed_findings: JSON list of finding strings the user has dismissed.
+    custom: arbitrary key-value settings (e.g. preferred region, default environment).
+    """
+
+    __tablename__ = "preferences"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=False, unique=True, index=True
+    )
+    dismissed_findings: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    custom: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)

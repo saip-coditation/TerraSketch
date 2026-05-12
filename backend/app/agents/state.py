@@ -14,8 +14,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 CloudProvider = Literal["aws", "azure", "gcp"]
 Environment = Literal["dev", "staging", "production"]
-NodeName = Literal["understand", "plan", "synthesize", "fixer", "validate"]
+NodeName = Literal["understand", "plan", "synthesize", "fixer", "validate", "clarify", "critique", "explain"]
 TierName = Literal["public", "private", "data", "edge", "unknown"]
+EdgeKind = Literal["depends_on", "ingress", "trust", "target_of", "attaches_to"]
 
 
 class Decision(BaseModel):
@@ -33,15 +34,36 @@ class NodeOutput(BaseModel):
     decisions: list[Decision] = []
     iteration: int = 0
     duration_ms: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cited_contexts: list[str] = []
     raw_response: dict[str, Any] | None = None
+
+
+class MultiplicityZone(BaseModel):
+    """Represents instances in a single zone/AZ (e.g. {"zone": "a", "count": 2})."""
+    zone: str = "default"
+    count: int = Field(default=1, ge=1)
 
 
 class IRNode(BaseModel):
     id: str
     label: str
     kind: str
-    multiplicity: int = 1
-    tier: TierName = "unknown"
+    multiplicity: list[MultiplicityZone] = Field(
+        default_factory=lambda: [MultiplicityZone()],
+        description=(
+            "Per-zone instance counts. Single instance = [{zone:'default',count:1}]. "
+            "Multi-AZ = [{zone:'a',count:2},{zone:'b',count:2}]."
+        ),
+    )
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    bbox: tuple[float, float, float, float] | None = None
+
+    @property
+    def total_count(self) -> int:
+        """Total instances across all zones."""
+        return sum(z.count for z in self.multiplicity)
 
 
 class IREdge(BaseModel):
@@ -51,27 +73,47 @@ class IREdge(BaseModel):
     target: str = Field(alias="to")
     label: str | None = None
     kind: str | None = None
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+
+
+class Ambiguity(BaseModel):
+    node_id: str | None = None
+    note: str
 
 
 class DiagramIR(BaseModel):
     nodes: list[IRNode] = []
     edges: list[IREdge] = []
-    ambiguities: list[str] = []
+    ambiguities: list[Ambiguity] = []
+
+
+class PlannedEdge(BaseModel):
+    source: str
+    target: str
+    kind: EdgeKind = "depends_on"
+    port: int | None = None
+
+
+class SkippedNode(BaseModel):
+    ir_node_id: str
+    reason: str
 
 
 class PlannedResource(BaseModel):
     local_id: str
     terraform_type: str
     purpose: str
+    reasoning: str = ""
+    alternatives: list[str] = []
     args: dict[str, Any] = {}
-    depends_on_local_ids: list[str] = []
     ir_node_ids: list[str] = []
 
 
 class ResourcePlan(BaseModel):
     cloud_provider: CloudProvider
     resources: list[PlannedResource] = []
-    skipped_ir_node_ids: list[str] = []
+    skipped: list[SkippedNode] = []
+    edges: list[PlannedEdge] = []
 
 
 class TerraformFiles(BaseModel):
@@ -91,9 +133,17 @@ class TerraformFiles(BaseModel):
         }
 
 
+class ValidationError(BaseModel):
+    file: str | None = None
+    line: int | None = None
+    code: str | None = None
+    message: str
+
+
 class ValidationReport(BaseModel):
-    valid: bool
+    valid: bool | None = None
     iterations: int
+    errors: list[ValidationError] = []
     final_errors: str | None = None
     skipped: bool = False
     skip_reason: str | None = None
@@ -113,6 +163,9 @@ class GenerationTrace(BaseModel):
     synthesize: NodeOutput | None = None
     fixer_iterations: list[NodeOutput] = []
     validate_node: NodeOutput | None = Field(default=None, alias="validate")
+    clarify: NodeOutput | None = None
+    critique: NodeOutput | None = None
+    explain: NodeOutput | None = None
 
 
 class GraphState(BaseModel):
@@ -121,12 +174,25 @@ class GraphState(BaseModel):
     image_base64: str | None = None
     text_description: str | None = None
 
+    # HITL inputs threaded from the request
+    correction_note: str | None = None
+    architecture_preset: str = "auto"
+
+    # Correlation IDs
+    session_id: str | None = None
+    user_id: str | None = None
+    request_id: str | None = None
+
     diagram_ir: DiagramIR | None = None
     resource_plan: ResourcePlan | None = None
     files: TerraformFiles | None = None
     validation: ValidationReport | None = None
 
     trace: GenerationTrace
+
+    # Node to resume from (for re-run-from-node-N)
+    start_from: NodeName | None = None
+    error: str | None = None
 
 
 class AgentRunResult(BaseModel):
@@ -135,3 +201,4 @@ class AgentRunResult(BaseModel):
     files: TerraformFiles | None = None
     validation: ValidationReport | None = None
     trace: GenerationTrace
+    error: str | None = None

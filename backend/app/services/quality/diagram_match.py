@@ -543,3 +543,31 @@ def improvement_advice_for_canonical_baseline(heuristic_advice: list[str]) -> li
             seen.add(block)
             out.append(block)
     return out[:12]
+
+
+# ── Validate pass-rate scoring (replaces heuristics once v2 is stable) ──────
+
+def blend_heuristic_with_validation(
+    heuristic_percent: int,
+    validation_passed: bool | None,
+    fixer_iterations: int = 0,
+) -> int:
+    """Blend the heuristic score with the terraform validate result.
+
+    When validate passes on the first try: heuristic score is boosted.
+    When it passes after fixes: score is penalised proportionally to iterations.
+    When it fails: hard cap at 40.
+    When validation was skipped (None): return heuristic unchanged.
+
+    This is the v2-ready scoring path; v1 exposes raw heuristic_percent only.
+    """
+    if validation_passed is None:
+        return heuristic_percent
+
+    if not validation_passed:
+        return min(heuristic_percent, 40)
+
+    # Passed — blend: boost for clean pass, penalise iterations
+    boost = max(0, 10 - fixer_iterations * 3)
+    blended = round(heuristic_percent * 0.7 + (heuristic_percent + boost) * 0.3)
+    return max(0, min(100, blended))

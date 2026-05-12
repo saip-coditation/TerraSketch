@@ -5,6 +5,7 @@ import Footer from "./components/Footer.jsx";
 import Home from "./pages/Home.jsx";
 import Generate from "./pages/Generate.jsx";
 import Result from "./pages/Result.jsx";
+import ResultV2 from "./pages/ResultV2.jsx";
 import History from "./pages/History.jsx";
 import Docs from "./pages/Docs.jsx";
 import NotFound from "./pages/NotFound.jsx";
@@ -19,6 +20,7 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/generate" element={<Generate />} />
           <Route path="/result/:id" element={<Result />} />
+          <Route path="/v2/result" element={<ResultV2 />} />
           <Route path="/history" element={<History />} />
           <Route path="/docs" element={<Docs />} />
           <Route path="/signin" element={<SignIn />} />

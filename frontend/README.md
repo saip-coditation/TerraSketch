@@ -30,10 +30,29 @@ Open [http://localhost:5173](http://localhost:5173).
 
 - `/` — Landing page with hero and feature highlights.
 - `/generate` — Main tool: upload diagram or describe in text.
-- `/result/:id` — Generated Terraform with Monaco viewer, copy/download, feedback.
+- `/result/:id` — v1 result: Monaco viewer, match-score ring, diff summary, ZIP download, feedback.
+- `/v2/result` — v2 result: resource plan summary, HITL edit buttons, collapsible "Why this code?" `AgentTrace` panel.
 - `/history` — Last 10 generations for the current browser session.
 - `/docs` — How-to + tips.
 - `/signin` — Email and password (account stored in backend DB).
+
+## Key components
+
+| Component | Path | Purpose |
+|---|---|---|
+| `AgentTrace` | `src/components/insights/AgentTrace.jsx` | Collapsible per-node reasoning panel for v2 results |
+| `InsightsDeck` | `src/components/insights/InsightsDeck.jsx` | Match-score ring + advice for v1 results |
+| `CodeViewer` | `src/components/CodeViewer/` | Monaco editor with HCL syntax for generated files |
+
+## API helpers (`src/services/api.js`)
+
+| Function | Endpoint | Purpose |
+|---|---|---|
+| `generateTerraform(payload)` | `POST /api/generate` | v1 generation |
+| `generateTerraformV2(payload)` | `POST /api/v2/generate` | v2 agentic generation |
+| `editGenerationIR(id, ir)` | `POST /api/v2/generation/{id}/ir/edit` | HITL: patch IR, re-run Plan |
+| `editGenerationPlan(id, plan)` | `POST /api/v2/generation/{id}/plan/edit` | HITL: patch Plan, re-run Synth |
+| `editGenerationFiles(id, files)` | `POST /api/v2/generation/{id}/files/edit` | HITL: patch files, re-validate |
 
 ## Deploying to Vercel
 

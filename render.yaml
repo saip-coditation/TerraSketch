@@ -10,7 +10,9 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: ANTHROPIC_MODEL
-        value: claude-sonnet-4-20250514
+        value: claude-sonnet-4-6
+      - key: SKIP_TERRAFORM_VALIDATE
+        value: "true"
       - key: ALLOWED_ORIGINS
         sync: false
       - key: APP_ENV

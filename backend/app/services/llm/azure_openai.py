@@ -20,7 +20,7 @@ from urllib.parse import urlparse
 import httpx
 
 from app.core.config import get_settings
-from app.core.prompt_builder import SYSTEM_PROMPT, build_user_message
+from app.core.prompt_builder import build_system_prompt, build_user_message
 from app.db.schemas import ClaudeOutput
 from app.services.terraform.parser import parse_claude_response
 
@@ -280,7 +280,7 @@ def _call_classic_azure_openai(
 
 def generate_terraform(
     *,
-    provider: str,
+    cloud_provider: str,
     environment: str,
     input_type: str,
     text_description: str | None = None,
@@ -300,7 +300,7 @@ def generate_terraform(
         )
 
     user_text = build_user_message(
-        provider=provider,
+        cloud_provider=cloud_provider,
         environment=environment,
         input_type=input_type,
         text_description=text_description,
@@ -316,8 +316,9 @@ def generate_terraform(
     else:
         user_content = user_text
 
+    system_prompt = build_system_prompt(cloud_provider=cloud_provider)
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_content},
     ]
 

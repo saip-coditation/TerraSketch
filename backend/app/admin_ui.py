@@ -21,8 +21,9 @@ class AdminAuth(AuthenticationBackend):
         form = await request.form()
         username = (form.get("username") or "").strip()
         password = (form.get("password") or "").strip()
-        expected_user = (_settings.ADMIN_UI_USER or "admin").strip()
-        expected_pw = (_settings.ADMIN_UI_PASSWORD or "").strip()
+        s = get_settings()
+        expected_user = (s.ADMIN_UI_USER or "admin").strip()
+        expected_pw = s.resolved_admin_ui_password()
         if not expected_pw:
             return False
         if username != expected_user or password != expected_pw:
@@ -105,9 +106,12 @@ class FeedbackAdmin(ModelView, model=models.Feedback):
 
 
 def mount_admin(app) -> None:
-    """Attach /admin when ADMIN_UI_PASSWORD is non-empty."""
-    if not (_settings.ADMIN_UI_PASSWORD or "").strip():
-        logger.info("Admin UI disabled (set ADMIN_UI_PASSWORD in .env to enable /admin).")
+    """Attach /admin when a resolved admin password is available (see Settings)."""
+    if not get_settings().resolved_admin_ui_password():
+        logger.info(
+            "Admin UI disabled (set ADMIN_UI_PASSWORD, or APP_ENV=development with "
+            "ADMIN_UI_ENABLED=true for the dev default)."
+        )
         return
 
     secret = (

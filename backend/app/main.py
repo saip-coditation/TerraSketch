@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 from starlette.middleware.sessions import SessionMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app import __version__
 from app.admin_ui import mount_admin
@@ -37,6 +38,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+if settings.uses_dev_admin_password_default:
+    from app.core.config import DEV_ADMIN_UI_PASSWORD_FALLBACK
+
+    logger.warning(
+        "SQLAdmin at /admin uses the default dev password %r (user=%r). "
+        "Set ADMIN_UI_PASSWORD in backend/.env for a secure password; "
+        "set ADMIN_UI_ENABLED=false to disable /admin.",
+        DEV_ADMIN_UI_PASSWORD_FALLBACK,
+        (settings.ADMIN_UI_USER or "admin").strip(),
+    )
+
 app = FastAPI(
     title=settings.APP_NAME,
     description="Architecture Diagram → Terraform Code Generator API",
@@ -47,7 +59,7 @@ app.state.limiter = limiter
 
 app.add_middleware(RequestIdMiddleware)
 
-_admin_pw = (settings.ADMIN_UI_PASSWORD or "").strip()
+_admin_pw = settings.resolved_admin_ui_password()
 if _admin_pw:
     _sess = (
         settings.ADMIN_SESSION_SECRET or settings.JWT_SECRET or "change-me-admin-session"
@@ -62,7 +74,8 @@ if _admin_pw:
     mount_admin(app)
 else:
     logger.warning(
-        "Admin UI is off: set ADMIN_UI_PASSWORD in backend/.env, then restart Uvicorn. "
+        "Admin UI is off: set ADMIN_UI_PASSWORD (or use APP_ENV=development for the "
+        "built-in dev default), or set ADMIN_UI_ENABLED=false. "
         "Then open http://127.0.0.1:8000/admin"
     )
 
@@ -95,6 +108,11 @@ if settings.APP_ENV.lower() == "development" and settings.CORS_ALLOW_PRIVATE_NET
     _cors_kwargs["allow_origin_regex"] = _private_lan_origin_regex
 
 app.add_middleware(CORSMiddleware, **_cors_kwargs)
+
+# Trust X-Forwarded-Proto / X-Forwarded-For from local Vite (or cloudflared → 127.0.0.1) so
+# https://*.trycloudflare.com/admin sees scheme=https and correct client for SQLAdmin.
+if settings.APP_ENV.lower() == "development":
+    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="127.0.0.1,::1")
 
 
 @app.on_event("startup")

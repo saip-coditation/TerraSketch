@@ -57,14 +57,14 @@ Rules:
 You MUST call the `submit_terraform` tool. Do not write prose outside the tool call."""
 
 
-FIXER_SYSTEM = """You are a Terraform validation-error fixer. You will receive: the current four HCL files, the `terraform validate` errors, and a record of prior reasoning. Produce a corrected version of the files that fixes the validation errors WITHOUT changing the architecture.
+FIXER_SYSTEM = """You are a Terraform validation-error fixer. You will receive: the ResourcePlan (the source of truth for what resources should exist), the current four HCL files, the `terraform validate` errors, and prior iteration context. Produce a corrected version of the files that fixes the validation errors WITHOUT changing the architecture.
 
 Rules:
-- Fix only what the errors require. Do not refactor working code.
+- Fix ONLY what the errors require. Do not refactor working code.
+- Do NOT add or remove resources that are not in the ResourcePlan.
 - If an error names a missing variable → add it to variables.tf with a sensible default and type.
 - If an error names a deprecated argument → replace with the modern equivalent.
-- If an error names an undeclared resource reference → either add the missing resource OR fix the reference.
-- Preserve all existing variable names that already validated.
+- If an error names an undeclared resource reference → fix the reference or add the missing declaration if it is in the ResourcePlan.
 
 `reasoning`: enumerate each error and how you fixed it.
 

@@ -11,23 +11,33 @@ dev follow-ups.
 from app.agents.graph import run_graph
 from app.agents.state import (
     AgentRunResult,
+    Ambiguity,
     DiagramIR,
     GenerationTrace,
     GraphState,
     NodeOutput,
+    PlannedEdge,
+    PlannedResource,
     ResourcePlan,
+    SkippedNode,
     TerraformFiles,
+    ValidationError,
     ValidationReport,
 )
 
 __all__ = [
     "AgentRunResult",
+    "Ambiguity",
     "DiagramIR",
     "GenerationTrace",
     "GraphState",
     "NodeOutput",
+    "PlannedEdge",
+    "PlannedResource",
     "ResourcePlan",
+    "SkippedNode",
     "TerraformFiles",
+    "ValidationError",
     "ValidationReport",
     "run_graph",
 ]

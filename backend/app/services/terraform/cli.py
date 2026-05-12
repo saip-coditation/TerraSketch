@@ -30,7 +30,7 @@ def run_terraform_validate(files: dict[str, str]) -> dict[str, Any]:
             root = Path(tmp)
             for name in required:
                 (root / name).write_text(files[name], encoding="utf-8")
-            env = {**os.environ, "TF_INPUT": "0"}
+            env = {"PATH": os.environ["PATH"], "HOME": os.environ.get("HOME", ""), "TF_INPUT": "0"}
             init = subprocess.run(
                 ["terraform", "init", "-backend=false", "-input=false", "-no-color"],
                 cwd=root,

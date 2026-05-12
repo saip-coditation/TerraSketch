@@ -69,6 +69,8 @@ cp .env.example .env
 uvicorn app.main:app --reload --port 8000
 ```
 
+SQLAdmin is at [http://127.0.0.1:8000/admin](http://127.0.0.1:8000/admin). In **`APP_ENV=development`**, if `ADMIN_UI_PASSWORD` is unset, the default login is user **`admin`** / password **`terrasketch-dev-admin`** (set `ADMIN_UI_PASSWORD` in `backend/.env` for your own secret; use `ADMIN_UI_ENABLED=false` to turn `/admin` off).
+
 The backend defaults to a local SQLite DB (`terrasketch.db`). Tables
 are created automatically on first run.
 
@@ -146,11 +148,12 @@ every time you restart this command.
 tunnel origin to `backend/.env` **`ALLOWED_ORIGINS`** (comma-separated), e.g.
 `https://YOUR-SUBDOMAIN.trycloudflare.com`, then restart Uvicorn.
 
-**`/admin` (SQLAdmin) via the tunnel** — With the dev server, Vite proxies
-`/admin` to FastAPI (same as `/api`). So you can open
-`https://….trycloudflare.com/admin` and e.g.
-`https://….trycloudflare.com/admin/user/list` while `ADMIN_UI_PASSWORD` is set
-and Uvicorn is running. Restart `npm run dev` after changing `vite.config.js`.
+**`/admin` (SQLAdmin) via the tunnel** — Point **cloudflared at port 5173** (Vite),
+not 8000 alone. Vite proxies `/admin` and `/api` to FastAPI and forwards the
+real `Host` and `X-Forwarded-Proto` so the admin login and redirects work on
+`https://….trycloudflare.com/admin`. Restart **`npm run dev`** after changing
+`vite.config.js`. Use `ADMIN_UI_PASSWORD` (or the dev default password in
+`APP_ENV=development`) and keep Uvicorn running on 8000.
 
 ## Deploying for free
 

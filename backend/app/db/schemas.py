@@ -40,6 +40,10 @@ class GenerateRequest(BaseModel):
         description="Text description of the architecture. Required when input_type='text' or 'draw'.",
     )
     session_id: str = Field(min_length=1, max_length=255)
+    dry_run: bool = Field(
+        default=False,
+        description="When true, run generation but do not persist the result.",
+    )
 
     @field_validator("image_base64")
     @classmethod

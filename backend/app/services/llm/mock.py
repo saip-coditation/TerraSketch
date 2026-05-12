@@ -159,20 +159,20 @@ resource "google_storage_bucket" "assets" {
 
 def generate_terraform(
     *,
-    provider: str,
+    cloud_provider: str,
     environment: str,
     input_type: str,
     text_description: str | None = None,
     image_base64: str | None = None,
     generation_hints: str | None = None,
 ) -> ClaudeOutput:
-    provider = provider.lower().strip()
+    cloud_provider = cloud_provider.lower().strip()
     files_by_provider = {
         "aws": _aws_files(environment),
         "azure": _azure_files(environment),
         "gcp": _gcp_files(environment),
     }
-    files = files_by_provider.get(provider) or _aws_files(environment)
+    files = files_by_provider.get(cloud_provider) or _aws_files(environment)
     assumptions = [
         "Generated in mock mode (no paid API call).",
         "Resources are scaffolding templates and should be customized before production use.",
@@ -188,7 +188,7 @@ def generate_terraform(
         assumptions.append(f"User hints recorded (mock mode does not apply them): {gh[:500]}")
 
     return ClaudeOutput(
-        provider=provider if provider in ("aws", "azure", "gcp") else "aws",
+        provider=cloud_provider if cloud_provider in ("aws", "azure", "gcp") else "aws",
         assumptions=assumptions,
         resources_identified=["network", "compute", "storage"],
         files=files,

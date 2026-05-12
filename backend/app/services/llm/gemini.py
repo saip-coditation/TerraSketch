@@ -10,7 +10,7 @@ from io import BytesIO
 from PIL import Image
 
 from app.core.config import get_settings
-from app.core.prompt_builder import SYSTEM_PROMPT, build_user_message
+from app.core.prompt_builder import build_system_prompt, build_user_message
 from app.db.schemas import ClaudeOutput
 from app.services.terraform.parser import parse_claude_response
 
@@ -68,7 +68,7 @@ def _strip_data_url(image_input: str) -> tuple[str, str]:
 
 def generate_terraform(
     *,
-    provider: str,
+    cloud_provider: str,
     environment: str,
     input_type: str,
     text_description: str | None = None,
@@ -90,14 +90,15 @@ def generate_terraform(
     model = genai.GenerativeModel(model_name=settings.GEMINI_MODEL)
 
     prompt = build_user_message(
-        provider=provider,
+        cloud_provider=cloud_provider,
         environment=environment,
         input_type=input_type,
         text_description=text_description,
         generation_hints=generation_hints,
     )
+    system_prompt = build_system_prompt(cloud_provider=cloud_provider)
     full_prompt = (
-        f"{SYSTEM_PROMPT}\n\n"
+        f"{system_prompt}\n\n"
         "IMPORTANT: Return ONLY a single valid JSON object and nothing else.\n\n"
         f"{prompt}"
     )
@@ -109,9 +110,9 @@ def generate_terraform(
     parts.append(full_prompt)
 
     logger.info(
-        "Calling Gemini (model=%s, provider=%s, env=%s, input=%s)",
+        "Calling Gemini (model=%s, cloud_provider=%s, env=%s, input=%s)",
         settings.GEMINI_MODEL,
-        provider,
+        cloud_provider,
         environment,
         input_type,
     )
@@ -119,6 +120,8 @@ def generate_terraform(
     try:
         response = model.generate_content(parts)
         raw_text = (getattr(response, "text", "") or "").strip()
+    except GeminiServiceError:
+        raise
     except Exception as exc:
         message = str(exc)
         low = message.lower()

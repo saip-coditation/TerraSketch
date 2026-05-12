@@ -81,7 +81,16 @@ def maybe_replace_with_canonical_microservice(
     resources_identified: list[str],
     environment: str,
 ) -> tuple[dict[str, str], list[str]]:
-    """If the diagram matches the 7-component microservice, replace files with canonical."""
+    """If the diagram matches the 7-component microservice, replace files with the canonical template.
+
+    The swap is now made explicit to the user via assumptions (§4 P2):
+    - A clearly-labelled [CANONICAL_OVERRIDE] assumption is prepended.
+    - The original LLM output is NOT silently discarded — users can bypass
+      by using v2 which has no canonical override.
+    """
+    import logging
+    _log = logging.getLogger(__name__)
+
     main = files.get("main.tf", "")
     if not should_apply_canonical_microservice(
         cloud_provider=cloud_provider,
@@ -90,11 +99,21 @@ def maybe_replace_with_canonical_microservice(
     ):
         return files, []
 
+    _log.info(
+        "Canonical AWS microservice override applied (provider=%s). "
+        "LLM output replaced with validated template. Use v2 to bypass.",
+        cloud_provider,
+    )
+
     canonical = get_canonical_microservice_files(environment=environment)
     notes = [
-        "Canonical AWS microservice template applied so Terraform matches the diagram: "
-        "CloudFront with S3 (OAC) + ALB origins, ECS Fargate, ElastiCache, Aurora (cluster+instance), DynamoDB. "
-        "Provide vpc_id, subnets, s3_bucket_name, container_image, and db_password via terraform.tfvars."
+        "[CANONICAL_OVERRIDE] Your diagram matched the 7-component AWS microservice pattern "
+        "(CloudFront + S3 + ALB + ECS Fargate + ElastiCache + Aurora + DynamoDB). "
+        "The LLM output has been replaced with a validated production template to ensure "
+        "all wiring is correct. To use the raw LLM output instead, switch to v2 generation "
+        "which does not apply canonical overrides.",
+        "Provide vpc_id, public_subnet_ids, private_subnet_ids, s3_bucket_name, "
+        "container_image, and db_password via terraform.tfvars.",
     ]
     return canonical, notes
 

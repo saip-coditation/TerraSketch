@@ -1,6 +1,12 @@
-"""POST /api/generate — main Terraform generation endpoint."""
+"""POST /api/generate — v1 Terraform generation endpoint.
+
+Refactored into a GenerationPipeline with composable stages (§1 P1).
+Route is now async (§1 P2) using AsyncAnthropic + tool-use (§3 P1).
+"""
 
 import logging
+from dataclasses import dataclass, field
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
@@ -9,7 +15,7 @@ from app.api.deps import get_db, get_optional_user
 from app.core.config import get_settings
 from app.core.limiter import limiter
 from app.db import models
-from app.db.schemas import GenerateRequest, GenerateResponse
+from app.db.schemas import ClaudeOutput, GenerateRequest, GenerateResponse
 from app.services.llm.router import LLMServiceError, generate_terraform
 from app.services.quality.diagram_match import (
     analyze_diagram_match,
@@ -24,13 +30,164 @@ from app.services.templates.aws_microservice import (
 from app.services.templates.generation_hints import build_generation_hints
 from app.services.terraform.cli import run_terraform_fmt_check, run_terraform_validate
 from app.services.terraform.file_diff import summarize_file_diffs
-from app.services.terraform.parser import TerraformParseError
 from app.services.terraform.postprocess import postprocess_generated_files
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-_settings = get_settings()
 
+
+# ── GenerationPipeline ──────────────────────────────────────────────────────
+
+@dataclass
+class PipelineResult:
+    files: dict[str, str]
+    assumptions: list[str]
+    resources_identified: list[str]
+    usage_instructions: str | None
+    match_percent: int
+    improvement_advice: list[str]
+    security_warnings: list[str]
+    terraform_validation: dict[str, Any] | None
+    file_diff_summary: dict[str, Any] | None
+    canon_applied: bool = False
+
+
+class GenerationPipeline:
+    """Composable stages that transform LLM output into a persisted generation."""
+
+    @staticmethod
+    def postprocess(
+        ai_output: ClaudeOutput,
+        cloud_provider: str,
+    ) -> tuple[dict[str, str], list[str]]:
+        files, post_notes = postprocess_generated_files(
+            ai_output.files, cloud_provider=cloud_provider
+        )
+        assumptions = list(ai_output.assumptions or []) + post_notes
+        return files, assumptions
+
+    @staticmethod
+    def canonical_override(
+        files: dict[str, str],
+        assumptions: list[str],
+        ai_output: ClaudeOutput,
+        cloud_provider: str,
+        environment: str,
+    ) -> tuple[dict[str, str], list[str], list[str], str | None, bool]:
+        files, canon_notes = maybe_replace_with_canonical_microservice(
+            files=files,
+            cloud_provider=cloud_provider,
+            resources_identified=list(ai_output.resources_identified or []),
+            environment=environment,
+        )
+        assumptions = assumptions + canon_notes
+        resources_identified = list(ai_output.resources_identified or [])
+        usage_instructions = ai_output.usage_instructions
+        canon_applied = bool(canon_notes)
+        if canon_applied:
+            resources_identified = canonical_resources_list()
+            usage_instructions = (
+                "Canonical template applied for full diagram fidelity. "
+                "Create terraform.tfvars with: region, name_prefix, vpc_id, public_subnet_ids, "
+                "private_subnet_ids, s3_bucket_name, container_image, db_password. "
+                "CloudFront default behavior → S3 (OAC). Paths matching api_path_pattern (default /api/*) "
+                "→ ALB → ECS. ElastiCache and Aurora are reachable only from ECS security groups. "
+                "Run: terraform init && terraform plan."
+            )
+        return files, assumptions, resources_identified, usage_instructions, canon_applied
+
+    @staticmethod
+    def match_score(
+        cloud_provider: str,
+        files: dict[str, str],
+        resources_identified: list[str],
+        canon_applied: bool,
+        session_id: str,
+        environment: str,
+        improvement_advice: list[str],
+    ) -> tuple[int, list[str]]:
+        match_percent, advice = analyze_diagram_match(
+            cloud_provider=cloud_provider,
+            files=files,
+            resources_identified=resources_identified,
+        )
+        if canon_applied:
+            match_percent = surface_match_percent_for_canonical_baseline(
+                session_id=session_id,
+                environment=environment,
+            )
+            advice = improvement_advice_for_canonical_baseline(advice)
+        return match_percent, advice
+
+    @staticmethod
+    def secret_scan(files: dict[str, str]) -> list[str]:
+        return scan_generated_files(files)
+
+    @staticmethod
+    def file_diff(
+        compare_row: models.Generation | None,
+        files: dict[str, str],
+    ) -> dict[str, Any] | None:
+        if compare_row and compare_row.generated_files:
+            return summarize_file_diffs(compare_row.generated_files, files) or None
+        return None
+
+    @staticmethod
+    def validate(files: dict[str, str]) -> dict[str, Any] | None:
+        if get_settings().SKIP_TERRAFORM_VALIDATE:
+            return None
+        return {
+            "validate": run_terraform_validate(files),
+            "fmt": run_terraform_fmt_check(files),
+        }
+
+    @classmethod
+    def run(
+        cls,
+        *,
+        ai_output: ClaudeOutput,
+        cloud_provider: str,
+        environment: str,
+        session_id: str,
+        compare_row: models.Generation | None,
+    ) -> PipelineResult:
+        files, assumptions = cls.postprocess(ai_output, cloud_provider)
+        (
+            files,
+            assumptions,
+            resources_identified,
+            usage_instructions,
+            canon_applied,
+        ) = cls.canonical_override(files, assumptions, ai_output, cloud_provider, environment)
+
+        match_percent, improvement_advice = cls.match_score(
+            cloud_provider=cloud_provider,
+            files=files,
+            resources_identified=resources_identified,
+            canon_applied=canon_applied,
+            session_id=session_id,
+            environment=environment,
+            improvement_advice=[],
+        )
+        security_warnings = cls.secret_scan(files)
+        file_diff_summary = cls.file_diff(compare_row, files)
+        terraform_validation = cls.validate(files)
+
+        return PipelineResult(
+            files=files,
+            assumptions=assumptions,
+            resources_identified=resources_identified,
+            usage_instructions=usage_instructions,
+            match_percent=match_percent,
+            improvement_advice=improvement_advice,
+            security_warnings=security_warnings,
+            terraform_validation=terraform_validation,
+            file_diff_summary=file_diff_summary,
+            canon_applied=canon_applied,
+        )
+
+
+# ── Helper ──────────────────────────────────────────────────────────────────
 
 def _response_from_record(record: models.Generation, request_id: str | None) -> GenerateResponse:
     return GenerateResponse(
@@ -51,14 +208,16 @@ def _response_from_record(record: models.Generation, request_id: str | None) -> 
     )
 
 
+# ── Routes ──────────────────────────────────────────────────────────────────
+
 @router.post(
     "/generate",
     response_model=GenerateResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Generate Terraform from a diagram or text description",
 )
-@limiter.limit(_settings.RATE_LIMIT_GENERATE)
-def post_generate(
+@limiter.limit(get_settings().RATE_LIMIT_GENERATE)
+async def post_generate(
     request: Request,
     payload: GenerateRequest,
     db: Session = Depends(get_db),
@@ -75,13 +234,12 @@ def post_generate(
         if not compare_row:
             raise HTTPException(status_code=404, detail="compare_generation_id not found")
         if current_user:
-            if compare_row.user_id:
-                if compare_row.user_id != current_user.id:
-                    raise HTTPException(
-                        status_code=403,
-                        detail="Cannot compare with a generation from another account",
-                    )
-            elif compare_row.session_id != payload.session_id:
+            if compare_row.user_id and compare_row.user_id != current_user.id:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Cannot compare with a generation from another account",
+                )
+            elif not compare_row.user_id and compare_row.session_id != payload.session_id:
                 raise HTTPException(
                     status_code=403,
                     detail="Cannot compare with a generation from another session",
@@ -96,120 +254,104 @@ def post_generate(
         architecture_preset=payload.architecture_preset,
         correction_note=payload.correction_note,
     )
-    generation_hints = hints_text if hints_text else None
 
     try:
-        ai_output = generate_terraform(
-            provider=payload.cloud_provider,
+        ai_output = await generate_terraform(
+            cloud_provider=payload.cloud_provider,
             environment=payload.environment,
             input_type=payload.input_type,
             text_description=payload.text_description,
             image_base64=payload.image_base64,
-            generation_hints=generation_hints,
+            generation_hints=hints_text or None,
         )
     except LLMServiceError as exc:
         logger.warning("LLM service error: %s", exc)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    except TerraformParseError as exc:
-        logger.warning("Failed to parse Claude response: %s", exc)
-        raise HTTPException(
-            status_code=502,
-            detail=f"AI response could not be parsed: {exc}",
-        ) from exc
+    except Exception as exc:
+        logger.exception("Unexpected LLM error")
+        raise HTTPException(status_code=500, detail=f"Unexpected error during generation: {exc}") from exc
 
     if ai_output.provider != payload.cloud_provider:
-        logger.info(
-            "AI returned provider=%s but request asked for %s. Using requested provider.",
+        logger.warning(
+            "Provider mismatch: LLM returned %r, request asked for %r. Continuing with requested provider.",
             ai_output.provider,
             payload.cloud_provider,
         )
-
-    files, post_notes = postprocess_generated_files(
-        ai_output.files,
-        cloud_provider=payload.cloud_provider,
-    )
-    new_assumptions = list(ai_output.assumptions or [])
-    new_assumptions.extend(post_notes)
-
-    files, canon_notes = maybe_replace_with_canonical_microservice(
-        files=files,
-        cloud_provider=payload.cloud_provider,
-        resources_identified=list(ai_output.resources_identified or []),
-        environment=payload.environment,
-    )
-    new_assumptions.extend(canon_notes)
-
-    updates: dict = {"files": files, "assumptions": new_assumptions}
-    if canon_notes:
-        updates["resources_identified"] = canonical_resources_list()
-        updates["usage_instructions"] = (
-            "Canonical template applied for full diagram fidelity. "
-            "Create terraform.tfvars with: region, name_prefix, vpc_id, public_subnet_ids, "
-            "private_subnet_ids, s3_bucket_name, container_image, db_password. "
-            "CloudFront default behavior → S3 (OAC). Paths matching api_path_pattern (default /api/*) "
-            "→ ALB → ECS. ElastiCache and Aurora are reachable only from ECS security groups. "
-            "Run: terraform init && terraform plan."
+        # Don't fail hard — accept the output and override the provider field
+        from app.db.schemas import ClaudeOutput as _CO
+        ai_output = _CO(
+            provider=payload.cloud_provider,
+            assumptions=ai_output.assumptions,
+            resources_identified=ai_output.resources_identified,
+            files=ai_output.files,
+            usage_instructions=ai_output.usage_instructions,
         )
 
-    ai_output = ai_output.model_copy(update=updates)
-
-    match_percent, improvement_advice = analyze_diagram_match(
-        cloud_provider=payload.cloud_provider,
-        files=ai_output.files,
-        resources_identified=list(ai_output.resources_identified or []),
-    )
-    if canon_notes:
-        match_percent = surface_match_percent_for_canonical_baseline(
-            session_id=payload.session_id,
+    try:
+        result = GenerationPipeline.run(
+            ai_output=ai_output,
+            cloud_provider=payload.cloud_provider,
             environment=payload.environment,
+            session_id=payload.session_id,
+            compare_row=compare_row,
         )
-        improvement_advice = improvement_advice_for_canonical_baseline(improvement_advice)
-
-    security_warnings = scan_generated_files(ai_output.files)
-
-    file_diff_summary: dict | None = None
-    if compare_row and compare_row.generated_files:
-        summary = summarize_file_diffs(compare_row.generated_files, ai_output.files)
-        file_diff_summary = summary or None
-
-    terraform_validation: dict | None = None
-    if not _settings.SKIP_TERRAFORM_VALIDATE:
-        terraform_validation = {
-            "validate": run_terraform_validate(ai_output.files),
-            "fmt": run_terraform_fmt_check(ai_output.files),
-        }
+    except Exception as exc:
+        logger.exception("Pipeline error during generation")
+        raise HTTPException(status_code=500, detail=f"Pipeline error: {exc}") from exc
 
     rid = getattr(request.state, "request_id", None)
 
-    record = models.Generation(
+    if not payload.dry_run:
+        record = models.Generation(
+            session_id=payload.session_id,
+            user_id=current_user.id if current_user else None,
+            cloud_provider=payload.cloud_provider,
+            environment=payload.environment,
+            input_type=payload.input_type,
+            input_description=payload.text_description,
+            resources_identified=result.resources_identified,
+            assumptions=result.assumptions,
+            generated_files=result.files,
+            usage_instructions=result.usage_instructions,
+            diagram_match_percent=result.match_percent,
+            improvement_advice=result.improvement_advice,
+            security_warnings=result.security_warnings,
+            terraform_validation=result.terraform_validation,
+            file_diff_summary=result.file_diff_summary,
+        )
+        db.add(record)
+        db.commit()
+        db.refresh(record)
+
+        logger.info(
+            "Generation %s complete (match=%s%%, request_id=%s)",
+            record.id,
+            result.match_percent,
+            rid,
+        )
+        return _response_from_record(record, rid)
+
+    # dry_run: return without persisting
+    from datetime import datetime
+    import uuid
+    dummy = models.Generation(
+        id=str(uuid.uuid4()),
         session_id=payload.session_id,
-        user_id=current_user.id if current_user else None,
         cloud_provider=payload.cloud_provider,
         environment=payload.environment,
         input_type=payload.input_type,
-        input_description=payload.text_description,
-        resources_identified=ai_output.resources_identified,
-        assumptions=ai_output.assumptions,
-        generated_files=ai_output.files,
-        usage_instructions=ai_output.usage_instructions,
-        diagram_match_percent=match_percent,
-        improvement_advice=improvement_advice,
-        security_warnings=security_warnings,
-        terraform_validation=terraform_validation,
-        file_diff_summary=file_diff_summary,
+        resources_identified=result.resources_identified,
+        assumptions=result.assumptions,
+        generated_files=result.files,
+        usage_instructions=result.usage_instructions,
+        diagram_match_percent=result.match_percent,
+        improvement_advice=result.improvement_advice,
+        security_warnings=result.security_warnings,
+        terraform_validation=result.terraform_validation,
+        file_diff_summary=result.file_diff_summary,
+        created_at=datetime.utcnow(),
     )
-    db.add(record)
-    db.commit()
-    db.refresh(record)
-
-    logger.info(
-        "Generation %s complete (match=%s%%, request_id=%s)",
-        record.id,
-        match_percent,
-        rid,
-    )
-
-    return _response_from_record(record, rid)
+    return _response_from_record(dummy, rid)
 
 
 @router.get(
@@ -217,12 +359,11 @@ def post_generate(
     response_model=GenerateResponse,
     summary="Fetch a single generation by ID",
 )
-def get_generation(
+async def get_generation(
     generation_id: str, request: Request, db: Session = Depends(get_db)
 ) -> GenerateResponse:
     record = db.get(models.Generation, generation_id)
     if not record:
         raise HTTPException(status_code=404, detail="Generation not found")
-
     rid = getattr(request.state, "request_id", None)
     return _response_from_record(record, rid)

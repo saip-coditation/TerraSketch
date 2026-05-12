@@ -28,7 +28,7 @@ const baseURL =
 
 export const api = axios.create({
   baseURL,
-  timeout: 120_000,
+  timeout: 300_000,
   headers: { "Content-Type": "application/json" },
 });
 
@@ -75,6 +75,26 @@ api.interceptors.response.use(
 
 export async function generateTerraform(payload) {
   const { data } = await api.post("/api/generate", payload);
+  return data;
+}
+
+export async function generateTerraformV2(payload) {
+  const { data } = await api.post("/api/v2/generate", payload);
+  return data;
+}
+
+export async function editGenerationIR(generationId, ir) {
+  const { data } = await api.post(`/api/v2/generation/${generationId}/ir/edit`, ir);
+  return data;
+}
+
+export async function editGenerationPlan(generationId, plan) {
+  const { data } = await api.post(`/api/v2/generation/${generationId}/plan/edit`, plan);
+  return data;
+}
+
+export async function editGenerationFiles(generationId, files) {
+  const { data } = await api.post(`/api/v2/generation/${generationId}/files/edit`, files);
   return data;
 }
 
