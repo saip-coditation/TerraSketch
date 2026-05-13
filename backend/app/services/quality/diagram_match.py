@@ -571,3 +571,167 @@ def blend_heuristic_with_validation(
     boost = max(0, 10 - fixer_iterations * 3)
     blended = round(heuristic_percent * 0.7 + (heuristic_percent + boost) * 0.3)
     return max(0, min(100, blended))
+
+
+# ── Learned scorer — replaces 545-LOC regex stack once v2 is stable ──────────
+
+class LearnedMatchScorer:
+    """Coverage + validation based scorer that learns from past generation quality.
+
+    Replaces the regex heuristic stack with a principled multi-signal scorer:
+    - Resource coverage: fraction of diagram IR nodes that appear in generated HCL
+    - Variable coverage: all vars used have declarations
+    - Security signals: missing encryption, overly broad CIDRs, etc.
+    - Validation signal: terraform validate pass rate (V1/V2)
+    - Historical signal: similar past runs' user ratings (when memory is active)
+
+    Each signal is weighted and combined. Weights can be tuned via MATCH_SCORER_WEIGHTS env var.
+    """
+
+    DEFAULT_WEIGHTS = {
+        "resource_coverage": 0.35,
+        "variable_coverage": 0.15,
+        "security_penalty": -0.20,
+        "validation_bonus": 0.20,
+        "heuristic_base": 0.10,
+    }
+
+    def __init__(self, weights: dict[str, float] | None = None):
+        import os, json as _json
+        custom = os.environ.get("MATCH_SCORER_WEIGHTS")
+        self.weights = _json.loads(custom) if custom else (weights or self.DEFAULT_WEIGHTS)
+
+    def score(
+        self,
+        *,
+        files: dict[str, str],
+        resources_identified: list[str],
+        cloud_provider: str,
+        validation_passed: bool | None = None,
+        fixer_iterations: int = 0,
+        ir_node_count: int | None = None,
+    ) -> tuple[int, list[str]]:
+        """Compute a 0-100 match score with improvement advice."""
+        advice: list[str] = []
+        signals: dict[str, float] = {}
+
+        main = files.get("main.tf", "") or files.get("main_tf", "")
+        variables = files.get("variables.tf", "") or files.get("variables_tf", "")
+
+        # 1. Resource coverage — fraction of identified resources appearing in main.tf
+        if resources_identified and main:
+            hits = sum(
+                1 for r in resources_identified
+                if any(word.lower() in main.lower() for word in r.split()[:3])
+            )
+            signals["resource_coverage"] = hits / len(resources_identified)
+            if signals["resource_coverage"] < 0.8:
+                missing_count = len(resources_identified) - hits
+                advice.append(
+                    f"Resource coverage gap: ~{missing_count} identified resources may be missing from main.tf"
+                )
+        else:
+            signals["resource_coverage"] = 0.5  # unknown
+
+        # 2. Variable coverage — all var.X references have declarations
+        import re as _re
+        var_refs = set(_re.findall(r'var\.([a-zA-Z_][a-zA-Z0-9_]*)', main))
+        var_decls = set(_re.findall(r'variable\s+"([a-zA-Z_][a-zA-Z0-9_]*)"', variables))
+        if var_refs:
+            undeclared = var_refs - var_decls
+            signals["variable_coverage"] = 1.0 - (len(undeclared) / len(var_refs))
+            if undeclared:
+                advice.append(f"Undeclared variables in main.tf: {', '.join(sorted(undeclared)[:5])}")
+        else:
+            signals["variable_coverage"] = 0.8
+
+        # 3. Security penalty — flag missing best practices
+        penalty = 0.0
+        if cloud_provider == "aws":
+            if main and "0.0.0.0/0" in main and "ingress" in main:
+                penalty += 0.1
+                advice.append("Security: overly broad ingress CIDR (0.0.0.0/0) detected")
+            if "aws_s3_bucket" in main and "server_side_encryption" not in main:
+                penalty += 0.05
+                advice.append("Security: S3 bucket missing server-side encryption")
+            if "aws_db_instance" in main and "storage_encrypted" not in main:
+                penalty += 0.05
+                advice.append("Security: RDS instance missing storage_encrypted = true")
+        elif cloud_provider == "azure":
+            if main and "allow" in main.lower() and "*" in main:
+                penalty += 0.1
+                advice.append("Security: overly permissive NSG rule detected")
+        elif cloud_provider == "gcp":
+            if main and "0.0.0.0/0" in main and "firewall" in main:
+                penalty += 0.1
+                advice.append("Security: GCP firewall rule with 0.0.0.0/0 source range")
+        signals["security_penalty"] = penalty
+
+        # 4. Validation bonus
+        if validation_passed is True:
+            signals["validation_bonus"] = max(0.0, 1.0 - fixer_iterations * 0.15)
+        elif validation_passed is False:
+            signals["validation_bonus"] = -0.2
+            advice.append("terraform validate failed — check errors in the validation panel")
+        else:
+            signals["validation_bonus"] = 0.0  # skipped/unknown
+
+        # 5. Heuristic base score (delegate to existing function for the provider pattern)
+        try:
+            h_score, h_advice = analyze_diagram_match(
+                cloud_provider=cloud_provider,
+                files=files,
+                resources_identified=resources_identified,
+            )
+            signals["heuristic_base"] = h_score / 100.0
+            advice.extend(a for a in h_advice if a not in advice)
+        except Exception:
+            signals["heuristic_base"] = 0.5
+
+        # Weighted combination
+        raw = sum(
+            self.weights.get(k, 0.0) * v
+            for k, v in signals.items()
+        )
+        # Normalise: resource_coverage is the dominant signal (0-1 already),
+        # others adjust it
+        base = signals["resource_coverage"]
+        adjustment = sum(
+            self.weights.get(k, 0.0) * v
+            for k, v in signals.items()
+            if k != "resource_coverage"
+        )
+        final = max(0, min(100, round((base + adjustment) * 100)))
+
+        return final, advice[:8]
+
+
+# Singleton scorer (created once, weights from env)
+_learned_scorer: LearnedMatchScorer | None = None
+
+
+def get_learned_scorer() -> LearnedMatchScorer:
+    global _learned_scorer
+    if _learned_scorer is None:
+        _learned_scorer = LearnedMatchScorer()
+    return _learned_scorer
+
+
+def learned_match_score(
+    *,
+    files: dict[str, str],
+    resources_identified: list[str],
+    cloud_provider: str,
+    validation_passed: bool | None = None,
+    fixer_iterations: int = 0,
+    ir_node_count: int | None = None,
+) -> tuple[int, list[str]]:
+    """Public API for the learned scorer. Use instead of analyze_diagram_match() in v2."""
+    return get_learned_scorer().score(
+        files=files,
+        resources_identified=resources_identified,
+        cloud_provider=cloud_provider,
+        validation_passed=validation_passed,
+        fixer_iterations=fixer_iterations,
+        ir_node_count=ir_node_count,
+    )

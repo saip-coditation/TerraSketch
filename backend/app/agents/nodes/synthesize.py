@@ -11,8 +11,10 @@ S5 fix: stop_reason max_tokens guard raises rather than silently truncating.
 
 from __future__ import annotations
 
+import logging
 import time
 
+from app.agents.context import ContextBuilder
 from app.agents.llm import AgentLLMError, call_tool
 from app.agents.prompts import SYNTHESIZE_SYSTEM
 from app.agents.state import (
@@ -22,6 +24,9 @@ from app.agents.state import (
     TerraformFiles,
 )
 from app.agents.tools import SUBMIT_TERRAFORM
+from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 async def run_synthesize(state: GraphState) -> GraphState:
@@ -29,20 +34,38 @@ async def run_synthesize(state: GraphState) -> GraphState:
         raise AgentLLMError("Synthesize node requires resource_plan to be set (run plan first).")
 
     started = time.perf_counter()
+    mode = get_settings().SYNTHESIZE_MODE.lower()
 
-    # S3: forward ambiguities so Synth can inline "I assumed X because diagram said Y"
-    ambiguity_block = ""
-    if state.diagram_ir and state.diagram_ir.ambiguities:
-        lines = []
-        for a in state.diagram_ir.ambiguities:
-            prefix = f"[node:{a.node_id}]" if a.node_id else "[global]"
-            lines.append(f"  - {prefix} {a.note}")
-        ambiguity_block = "\nDiagram ambiguities (inline as HCL comments where relevant):\n" + "\n".join(lines)
+    # §4 P2: Deterministic / Hybrid mode — use Python HCL writer
+    if mode in ("deterministic", "hybrid"):
+        from app.agents.hcl_writer import emit_terraform, can_emit_deterministically
+        can_full, unknown = can_emit_deterministically(state.resource_plan)
+        if mode == "deterministic" or (mode == "hybrid" and can_full):
+            logger.info("Deterministic HCL emitter: mode=%s unknown_types=%s", mode, unknown)
+            tf_files = emit_terraform(state.resource_plan, environment=state.environment)
+            state.files = tf_files
+            state.trace.synthesize = NodeOutput(
+                node="synthesize",
+                reasoning=(
+                    f"Deterministic HCL emitter used ({mode} mode). "
+                    + (f"Unknown types requiring manual HCL: {unknown}" if unknown else "All types handled.")
+                ),
+                confidence=1.0,
+                decisions=[],
+                duration_ms=int((time.perf_counter() - started) * 1000),
+                cited_contexts=["hcl_writer:deterministic"],
+            )
+            return state
+        elif mode == "hybrid":
+            logger.info("Hybrid mode: falling back to LLM for unknown types: %s", unknown)
+
+    # §6a: Use ContextBuilder to assemble prompt
+    ctx = ContextBuilder.for_synthesize(state)
 
     user_text = (
         f"Cloud provider: {state.cloud_provider}\n"
-        f"Environment: {state.environment}{ambiguity_block}\n\n"
-        f"ResourcePlan:\n{state.resource_plan.model_dump_json(indent=2)}\n\n"
+        f"Environment: {state.environment}\n\n"
+        f"{ctx}\n\n"
         "For each resource in main.tf add a comment on the line above its block: "
         "# plan_local_id: <local_id>   (so the plan can be traced back to the HCL)"
     )
@@ -81,5 +104,6 @@ async def run_synthesize(state: GraphState) -> GraphState:
         duration_ms=int((time.perf_counter() - started) * 1000),
         input_tokens=result.pop("_input_tokens", 0),
         output_tokens=result.pop("_output_tokens", 0),
+        cited_contexts=["context_builder:synthesize"],
     )
     return state

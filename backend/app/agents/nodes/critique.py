@@ -1,6 +1,7 @@
 """Critique: security + best-practices review of generated Terraform files.
 
-Runs in parallel with (or after) ValidateFix. Returns a list of findings.
+Runs after ValidateFix. Returns a list of findings, filtered against
+per-user dismissed preferences (§5b P2 fix: Critique reads preferences before flagging).
 User can dismiss each finding; dismissals stored as per-user preferences.
 """
 
@@ -55,9 +56,30 @@ _CRITIQUE_TOOL: dict[str, Any] = {
 }
 
 
+async def _load_dismissed(user_id: str | None) -> set[str]:
+    """Load dismissed finding strings for this user from the preferences table."""
+    if not user_id:
+        return set()
+    try:
+        from app.db.session import SessionLocal
+        from app.services.memory.sql_preferences import SqlPreferencesMemory
+        db = SessionLocal()
+        try:
+            mem = SqlPreferencesMemory(db)
+            prefs = await mem.get_preferences(user_id)
+            return set(prefs.dismissed_findings or [])
+        finally:
+            db.close()
+    except Exception:
+        return set()
+
+
 async def run_critique(state: GraphState) -> GraphState:
     if state.files is None:
         raise AgentLLMError("Critique node requires files to be set (run synthesize first).")
+
+    # Load user-dismissed findings so we don't re-flag them (§5b P2)
+    dismissed = await _load_dismissed(state.user_id)
 
     started = time.perf_counter()
     user_text = (
@@ -75,10 +97,22 @@ async def run_critique(state: GraphState) -> GraphState:
         tool=_CRITIQUE_TOOL,
     )
 
-    findings = result.get("findings", [])
+    all_findings = result.get("findings", [])
+
+    # Filter out findings the user has previously dismissed as preferences
+    active_findings = [
+        f for f in all_findings
+        if f.get("finding", "") not in dismissed
+    ]
+    dismissed_count = len(all_findings) - len(active_findings)
+
+    reasoning = str(result.get("reasoning", ""))
+    if dismissed_count:
+        reasoning += f" ({dismissed_count} finding(s) suppressed per user preferences)"
+
     state.trace.critique = NodeOutput(
         node="critique",
-        reasoning=str(result.get("reasoning", "")),
+        reasoning=reasoning,
         confidence=float(result.get("confidence", 1.0)),
         decisions=[
             Decision(
@@ -86,9 +120,10 @@ async def run_critique(state: GraphState) -> GraphState:
                 choice=f.get("finding", ""),
                 alternatives_considered=[f.get("recommendation", "")],
             )
-            for f in findings
+            for f in active_findings
         ],
         duration_ms=int((time.perf_counter() - started) * 1000),
+        input_tokens=result.pop("_input_tokens", 0),
+        output_tokens=result.pop("_output_tokens", 0),
     )
-    # Store findings in trace decisions for UI consumption
     return state

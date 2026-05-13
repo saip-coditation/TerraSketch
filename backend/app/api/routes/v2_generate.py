@@ -78,17 +78,16 @@ async def post_generate_v2(
                     usage_instructions = d.choice
                     break
 
-        # Blended diagram match score using validation result
-        from app.services.quality.diagram_match import analyze_diagram_match, blend_heuristic_with_validation
-        heuristic_pct, advice = analyze_diagram_match(
-            cloud_provider=record.cloud_provider,
+        # Learned scorer: combines resource coverage, variable coverage,
+        # security signals, and validation result (§4 todo — learned scorer)
+        from app.services.quality.diagram_match import learned_match_score
+        diagram_match_percent, advice = learned_match_score(
             files=result.files.as_dict() if result.files else {},
             resources_identified=resources_identified,
-        )
-        diagram_match_percent = blend_heuristic_with_validation(
-            heuristic_percent=heuristic_pct,
+            cloud_provider=payload.cloud_provider,
             validation_passed=result.validation.valid if result.validation else None,
             fixer_iterations=len(result.trace.fixer_iterations),
+            ir_node_count=len(result.diagram_ir.nodes) if result.diagram_ir else None,
         )
 
         record = models.Generation(

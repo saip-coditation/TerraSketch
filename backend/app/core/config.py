@@ -32,6 +32,18 @@ class Settings(BaseSettings):
         default=False,
         description="When true, v2 agent nodes return static mock responses without calling any LLM. Useful for testing the pipeline without an API key.",
     )
+    SYNTHESIZE_MODE: str = Field(
+        default="llm",
+        description="'llm' (default) uses Claude to write HCL. 'deterministic' uses the Python HCL writer (no LLM call). 'hybrid' tries deterministic first, falls back to LLM for unknown types.",
+    )
+    CANONICAL_OVERRIDE_ENABLED: bool = Field(
+        default=True,
+        description="When false, disables the AWS microservice canonical template override. v2 never applies it.",
+    )
+    V1_VALIDATE_FIX_ENABLED: bool = Field(
+        default=False,
+        description="When true, v1 pipeline runs terraform validate + LLM fixer loop (up to AGENT_MAX_FIX_ITERATIONS). Requires ANTHROPIC_API_KEY and terraform CLI.",
+    )
     ANTHROPIC_EXTENDED_THINKING: bool = False
     ANTHROPIC_THINKING_BUDGET_TOKENS: int = Field(default=4096, ge=1024, le=32000)
     ANTHROPIC_STREAM: bool = False

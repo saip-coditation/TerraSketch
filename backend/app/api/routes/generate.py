@@ -74,6 +74,8 @@ class GenerationPipeline:
         cloud_provider: str,
         environment: str,
     ) -> tuple[dict[str, str], list[str], list[str], str | None, bool]:
+        if not get_settings().CANONICAL_OVERRIDE_ENABLED:
+            return files, assumptions, list(ai_output.resources_identified or []), ai_output.usage_instructions, False
         files, canon_notes = maybe_replace_with_canonical_microservice(
             files=files,
             cloud_provider=cloud_provider,
@@ -134,12 +136,60 @@ class GenerationPipeline:
 
     @staticmethod
     def validate(files: dict[str, str]) -> dict[str, Any] | None:
-        if get_settings().SKIP_TERRAFORM_VALIDATE:
+        settings = get_settings()
+        if settings.SKIP_TERRAFORM_VALIDATE:
             return None
-        return {
-            "validate": run_terraform_validate(files),
-            "fmt": run_terraform_fmt_check(files),
-        }
+        validate_result = run_terraform_validate(files)
+        fmt_result = run_terraform_fmt_check(files)
+        return {"validate": validate_result, "fmt": fmt_result}
+
+    @staticmethod
+    async def validate_and_fix(files: dict[str, str]) -> tuple[dict[str, str], dict[str, Any] | None]:
+        """§3 P1: Run validate-fix loop in v1 (mirrors v2 agent behaviour).
+
+        Only active when V1_VALIDATE_FIX_ENABLED=true. Requires terraform CLI
+        and ANTHROPIC_API_KEY (uses AsyncAnthropic fixer agent).
+        Returns (possibly-fixed files, validation result dict).
+        """
+        settings = get_settings()
+        if settings.SKIP_TERRAFORM_VALIDATE or not settings.V1_VALIDATE_FIX_ENABLED:
+            return files, GenerationPipeline.validate(files)
+
+        from app.agents.state import TerraformFiles, ValidationReport
+        tf_files = TerraformFiles(**{
+            "main.tf": files.get("main.tf", ""),
+            "variables.tf": files.get("variables.tf", ""),
+            "outputs.tf": files.get("outputs.tf", ""),
+            "providers.tf": files.get("providers.tf", ""),
+        })
+
+        from app.agents.nodes.validate_fix import run_validate_fix
+        from app.agents.state import GraphState, GenerationTrace
+        from datetime import datetime
+
+        dummy_state = GraphState(
+            cloud_provider="aws",
+            environment="dev",
+            files=tf_files,
+            trace=GenerationTrace(
+                cloud_provider="aws",
+                environment="dev",
+                started_at=datetime.utcnow(),
+            ),
+        )
+        try:
+            result_state = await run_validate_fix(dummy_state)
+            fixed_files = result_state.files.as_dict() if result_state.files else files
+            v = result_state.validation
+            validate_result = {
+                "valid": v.valid,
+                "iterations": v.iterations,
+                "skipped": v.skipped,
+                "errors": [e.model_dump() for e in (v.errors or [])],
+            } if v else None
+            return fixed_files, {"validate": validate_result, "fmt": run_terraform_fmt_check(fixed_files)}
+        except Exception:
+            return files, GenerationPipeline.validate(files)
 
     @classmethod
     def run(
@@ -300,6 +350,14 @@ async def post_generate(
         raise HTTPException(status_code=500, detail=f"Pipeline error: {exc}") from exc
 
     rid = getattr(request.state, "request_id", None)
+
+    # §3 P1: v1 validate-fix loop — only when V1_VALIDATE_FIX_ENABLED=true
+    _settings = get_settings()
+    if _settings.V1_VALIDATE_FIX_ENABLED and not _settings.SKIP_TERRAFORM_VALIDATE:
+        try:
+            result.files, result.terraform_validation = await GenerationPipeline.validate_and_fix(result.files)
+        except Exception as exc:
+            logger.warning("v1 validate-fix loop failed, using original files: %s", exc)
 
     if not payload.dry_run:
         record = models.Generation(
