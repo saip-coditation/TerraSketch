@@ -10,6 +10,7 @@ import History from "./pages/History.jsx";
 import Docs from "./pages/Docs.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import SignIn from "./pages/SignIn.jsx";
+import Templates from "./pages/Templates.jsx";
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="/generate" element={<Generate />} />
           <Route path="/result/:id" element={<Result />} />
           <Route path="/v2/result" element={<ResultV2 />} />
+          <Route path="/templates" element={<Templates />} />
           <Route path="/history" element={<History />} />
           <Route path="/docs" element={<Docs />} />
           <Route path="/signin" element={<SignIn />} />

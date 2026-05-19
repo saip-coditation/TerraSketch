@@ -155,6 +155,153 @@ body::before {
   }
 }
 
+/* ─── Light mode overrides ─────────────────────────────── */
+html.light {
+  color-scheme: light;
+}
+
+html.light body {
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(56, 189, 248, 0.08), transparent 60%),
+    radial-gradient(900px 500px at 110% 10%, rgba(139, 92, 246, 0.08), transparent 60%),
+    #f1f5f9;
+}
+
+html.light body::before {
+  opacity: 0.012;
+}
+
+html.light .card,
+html.light .card-glow {
+  background: rgba(255, 255, 255, 0.88);
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+html.light .card-glow::after {
+  opacity: 0.3;
+}
+
+html.light .mesh-hero {
+  background: linear-gradient(120deg, rgba(14,165,233,0.07), rgba(139,92,246,0.05), rgba(14,165,233,0.04));
+  border-color: rgba(0, 0, 0, 0.07);
+}
+
+html.light .heading-display {
+  color: #0f172a;
+}
+
+html.light .input,
+html.light .select,
+html.light .textarea {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(0, 0, 0, 0.12);
+  color: #0f172a;
+}
+
+html.light .input::placeholder,
+html.light .select::placeholder,
+html.light .textarea::placeholder {
+  color: #94a3b8;
+}
+
+html.light .btn-secondary {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.12);
+  color: #1e293b;
+}
+
+html.light .btn-secondary:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+html.light .btn-ghost {
+  color: #475569;
+}
+
+html.light .btn-ghost:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: #0f172a;
+}
+
+html.light .tab {
+  color: #475569;
+}
+
+html.light .tab:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: #0f172a;
+}
+
+html.light .tab-active {
+  background: rgba(0, 0, 0, 0.07);
+  color: #0f172a;
+}
+
+html.light .badge {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.09);
+  color: #334155;
+}
+
+html.light header.sticky {
+  background: rgba(241, 245, 249, 0.92);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+/* Text colour overrides */
+html.light .text-white { color: #0f172a !important; }
+html.light .text-slate-100 { color: #1e293b !important; }
+html.light .text-slate-200 { color: #334155 !important; }
+html.light .text-slate-300 { color: #475569 !important; }
+html.light .text-slate-400 { color: #64748b !important; }
+html.light .text-slate-500 { color: #94a3b8 !important; }
+html.light .text-slate-600 { color: #cbd5e1 !important; }
+
+/* Semi-transparent bg utilities */
+html.light .bg-white\/\[0\.03\],
+html.light .bg-white\/\[0\.04\],
+html.light .bg-white\/\[0\.06\],
+html.light .bg-white\/\[0\.07\],
+html.light .bg-white\/\[0\.08\],
+html.light .bg-white\/5,
+html.light .bg-white\/10 {
+  background: rgba(0, 0, 0, 0.03) !important;
+}
+
+html.light .bg-white\/\[0\.03\]:hover,
+html.light .bg-white\/\[0\.06\]:hover,
+html.light .bg-white\/\[0\.08\]:hover {
+  background: rgba(0, 0, 0, 0.06) !important;
+}
+
+html.light .border-white\/10,
+html.light .border-white\/5 {
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+html.light .bg-ink-900\/40,
+html.light .bg-ink-900\/60,
+html.light .bg-ink-900\/70 {
+  background: rgba(255, 255, 255, 0.75) !important;
+}
+
+html.light .bg-ink-950\/90,
+html.light .bg-ink-950\/98 {
+  background: rgba(241, 245, 249, 0.95) !important;
+}
+
+/* Brand colours stay the same in light mode */
+html.light .text-brand-200 { color: #0284c7 !important; }
+html.light .text-brand-300 { color: #0369a1 !important; }
+html.light .text-brand-300\/90 { color: #0369a1 !important; }
+html.light .text-emerald-300 { color: #059669 !important; }
+html.light .text-emerald-200 { color: #047857 !important; }
+html.light .text-emerald-400 { color: #10b981 !important; }
+html.light .text-rose-200 { color: #be123c !important; }
+html.light .text-amber-300 { color: #d97706 !important; }
+html.light .text-violet-300 { color: #7c3aed !important; }
+
 ::selection {
   background: rgba(56, 189, 248, 0.35);
   color: white;

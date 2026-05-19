@@ -23,13 +23,13 @@ const PRESETS = [
   { id: "serverless", label: "Serverless", description: "API GW · Lambda · DynamoDB/S3" },
 ];
 
-export default function GeneratorPanel({ onSubmit, loading }) {
-  const [provider, setProvider] = useState("aws");
+export default function GeneratorPanel({ onSubmit, loading, prefill = null }) {
+  const [provider, setProvider] = useState(prefill?.provider || "aws");
   const [environment, setEnvironment] = useState("dev");
   const [architecturePreset, setArchitecturePreset] = useState("auto");
-  const [tab, setTab] = useState("image");
+  const [tab, setTab] = useState(prefill?.text ? "text" : "image");
   const [file, setFile] = useState(null);
-  const [text, setText] = useState("");
+  const [text, setText] = useState(prefill?.text || "");
   const [correctionNote, setCorrectionNote] = useState("");
   const [compareGenerationId, setCompareGenerationId] = useState(() =>
     typeof sessionStorage !== "undefined"

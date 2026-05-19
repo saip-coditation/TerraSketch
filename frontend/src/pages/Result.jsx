@@ -10,6 +10,9 @@ import InsightsDeck from "../components/insights/InsightsDeck.jsx";
 import FileDiffSummary from "../components/insights/FileDiffSummary.jsx";
 import ShareAndGitCard from "../components/insights/ShareAndGitCard.jsx";
 import { getApiBaseUrl, getGeneration, postFeedback } from "../services/api.js";
+import CostEstimator from "../components/insights/CostEstimator.jsx";
+import MermaidExport from "../components/insights/MermaidExport.jsx";
+import ComplexityBadge from "../components/insights/ComplexityBadge.jsx";
 import { getSessionId } from "../utils/sessionId.js";
 
 function formatProvider(p) {
@@ -163,11 +166,17 @@ export default function Result() {
       <div className="grid min-w-0 gap-6 lg:gap-8 xl:grid-cols-[minmax(0,340px),minmax(0,1fr)] xl:items-start">
         <aside className="min-w-0 space-y-4 xl:sticky xl:top-20 xl:self-start">
           <MatchScoreRing percent={data.diagram_match_percent ?? 0} />
+          <ComplexityBadge resources={data.resources_identified || []} />
           <InsightsDeck
             improvementAdvice={data.improvement_advice || []}
             securityWarnings={data.security_warnings || []}
             terraformValidation={data.terraform_validation}
           />
+          <CostEstimator
+            resources={data.resources_identified || []}
+            cloudProvider={data.cloud_provider}
+          />
+          <MermaidExport resources={data.resources_identified || []} />
           <FileDiffSummary summary={data.file_diff_summary} />
           <ShareAndGitCard
             generationId={data.generation_id}

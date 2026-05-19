@@ -53,6 +53,8 @@ Open [http://localhost:5173](http://localhost:5173).
 | `editGenerationIR(id, ir)` | `POST /api/v2/generation/{id}/ir/edit` | HITL: patch IR, re-run Plan |
 | `editGenerationPlan(id, plan)` | `POST /api/v2/generation/{id}/plan/edit` | HITL: patch Plan, re-run Synth |
 | `editGenerationFiles(id, files)` | `POST /api/v2/generation/{id}/files/edit` | HITL: patch files, re-validate |
+| `getHistory(sessionId)` | `GET /api/history` | Fetch generation history for a session |
+| `submitFeedback(id, rating, comment)` | `POST /api/feedback` | Submit 1–5 star rating |
 
 ## Deploying to Vercel
 

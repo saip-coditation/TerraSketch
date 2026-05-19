@@ -66,6 +66,9 @@ Use a Cloudflare Quick Tunnel — `cloudflared tunnel --url http://127.0.0.1:517
 | `ANTHROPIC_STREAM` | no | `false` | Stream responses (improves UX on slow connections) |
 | `AGENT_MAX_FIX_ITERATIONS` | no | `3` | Max terraform-validate fix iterations in v2 |
 | `AGENT_MOCK_MODE` | no | `false` | When `true`, v2 agent nodes return static mock responses — no API key needed. For pipeline testing. |
+| `SYNTHESIZE_MODE` | no | `llm` | `llm` = LLM generates HCL; `deterministic` = Python HCL writer (26 resource types, no LLM); `hybrid` = deterministic where possible, LLM fallback |
+| `CANONICAL_OVERRIDE_ENABLED` | no | `true` | When `false`, skips the AWS microservice canonical template override |
+| `V1_VALIDATE_FIX_ENABLED` | no | `false` | When `true`, v1 pipeline runs terraform validate + LLM fixer loop (requires `ANTHROPIC_API_KEY` + terraform CLI) |
 | `GEMINI_API_KEY` | if `LLM_PROVIDER=gemini` | — | Google AI Studio / Gemini API key |
 | `GEMINI_MODEL` | no | `gemini-2.0-flash` | Gemini model id |
 | `AZURE_OPENAI_ENDPOINT` | if `LLM_PROVIDER=azure` | — | e.g. `https://YOUR_RESOURCE.openai.azure.com` |

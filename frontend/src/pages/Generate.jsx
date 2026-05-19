@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import GeneratorPanel from "../components/GeneratorPanel/GeneratorPanel.jsx";
+import GenerationProgress from "../components/GenerationProgress.jsx";
 import { generateTerraform } from "../services/api.js";
 import { getSessionId } from "../utils/sessionId.js";
 
@@ -8,6 +9,8 @@ export default function Generate() {
   const [loading, setLoading] = useState(false);
   const [globalError, setGlobalError] = useState(null);
   const navigate = useNavigate();
+  const location = useLocation();
+  const prefill = location.state?.prefill || null;
 
   const handleSubmit = async (payload) => {
     setLoading(true);
@@ -43,7 +46,9 @@ export default function Generate() {
           </p>
         </header>
 
-        <GeneratorPanel onSubmit={handleSubmit} loading={loading} />
+        <GeneratorPanel onSubmit={handleSubmit} loading={loading} prefill={prefill} />
+
+        <GenerationProgress loading={loading} />
 
         {globalError && (
           <div
