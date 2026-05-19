@@ -50,6 +50,23 @@ backend/app/
 
 ## What's inside
 
+### Frontend features
+
+| Feature | Description |
+|---|---|
+| **Generate page** | Upload a diagram image or describe architecture in text; architecture preset selector (Auto / Simple web / Microservice / Serverless); correction note field; diff vs last run |
+| **Templates page** | 6 pre-built architecture templates (3-Tier AWS, Serverless, Microservices ECS, Data Pipeline, Azure Web App, GKE); filter by provider; "Use this template" pre-fills the Generate form |
+| **Generation progress** | Animated 5-stage progress bar (Analyzing → Identifying → Planning → Generating → Validating) during API call; requestAnimationFrame-based, capped at 92% until response returns |
+| **Result page** | Code viewer (Monaco), resource map, assumptions box, usage instructions, file diff summary, share/git card, feedback (1–5 stars) |
+| **Re-generate button** | Appears on the Result page when `input_description` is available; pre-fills Generate form with the original description, provider, environment, and input type |
+| **Match Score Ring** | Circular SVG ring showing diagram-to-Terraform match % (0–100) with colour bands |
+| **Complexity Badge** | Scores resources across 10 signals → Simple / Moderate / Complex / Enterprise tier with signal pills |
+| **Security Score Panel** | 16 HCL regex checks across IAM, Encryption, Network, Access Control, Resilience, Secrets, Logging; SVG score ring; expandable findings grouped by category; surfaces backend `security_warnings` |
+| **Cost Estimator** | Monthly cost estimate with two-stage lookup (exact Terraform type → keyword fuzzy match for human-readable v1 labels); per-resource line items; provider calculator link |
+| **Cost Optimizer** | 14 Terraform-aware cost optimization rules across Compute / Database / Network / Storage; environment-aware (Spot / NAT instance suggestions only for dev/staging); expandable "How to apply" snippets |
+| **Mermaid Export** | Generates `graph TD` Mermaid diagram from resource list; groups into subgraphs; infers edges from cloud topology patterns; copy + "Open in Mermaid Live" |
+| **Dark / Light mode** | Theme toggle in Navbar (sun/moon); persisted to `localStorage`; `html.light` CSS class overrides Tailwind dark theme |
+
 ### API endpoints
 
 | Method | Path | Description |
@@ -212,6 +229,7 @@ DATABASE_URL=... ANTHROPIC_API_KEY=... python scripts/feedback_retraining.py
 | Layer | Libraries |
 |---|---|
 | Frontend | React 18, Vite 5, Tailwind 3, React Router 6, Monaco editor, JSZip, Axios |
+| Insights UI | Custom SVG rings, HCL regex security scanner, two-stage cost lookup, Mermaid diagram generator, requestAnimationFrame progress tracker |
 | Backend | FastAPI, SQLAlchemy 2, Alembic, Pydantic v2, slowapi, Pillow, aiosqlite, asyncpg |
 | AI | `anthropic>=0.50,<1.0`, `openai` (Azure), `google-generativeai` (Gemini) |
 | Database | PostgreSQL (Render) / SQLite (local), pgvector (optional semantic memory) |
