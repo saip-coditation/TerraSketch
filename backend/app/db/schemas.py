@@ -74,6 +74,8 @@ class GenerateResponse(BaseModel):
     generation_id: str
     cloud_provider: CloudProvider
     environment: Environment
+    input_type: InputType = "text"
+    input_description: str | None = None
     resources_identified: list[str] = []
     assumptions: list[str] = []
     files: dict[str, str]

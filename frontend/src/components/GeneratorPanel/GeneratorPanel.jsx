@@ -25,9 +25,9 @@ const PRESETS = [
 
 export default function GeneratorPanel({ onSubmit, loading, prefill = null }) {
   const [provider, setProvider] = useState(prefill?.provider || "aws");
-  const [environment, setEnvironment] = useState("dev");
+  const [environment, setEnvironment] = useState(prefill?.environment || "dev");
   const [architecturePreset, setArchitecturePreset] = useState("auto");
-  const [tab, setTab] = useState(prefill?.text ? "text" : "image");
+  const [tab, setTab] = useState(prefill?.inputType === "text" || prefill?.text ? "text" : "image");
   const [file, setFile] = useState(null);
   const [text, setText] = useState(prefill?.text || "");
   const [correctionNote, setCorrectionNote] = useState("");

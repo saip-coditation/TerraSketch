@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import CodeViewer from "../components/CodeViewer/CodeViewer.jsx";
 import ResourceMap from "../components/ResourceMap.jsx";
 import AssumptionsBox from "../components/AssumptionsBox.jsx";
@@ -11,8 +11,10 @@ import FileDiffSummary from "../components/insights/FileDiffSummary.jsx";
 import ShareAndGitCard from "../components/insights/ShareAndGitCard.jsx";
 import { getApiBaseUrl, getGeneration, postFeedback } from "../services/api.js";
 import CostEstimator from "../components/insights/CostEstimator.jsx";
+import CostOptimizer from "../components/insights/CostOptimizer.jsx";
 import MermaidExport from "../components/insights/MermaidExport.jsx";
 import ComplexityBadge from "../components/insights/ComplexityBadge.jsx";
+import SecurityScorePanel from "../components/insights/SecurityScorePanel.jsx";
 import { getSessionId } from "../utils/sessionId.js";
 
 function formatProvider(p) {
@@ -58,6 +60,7 @@ function StarRating({ value, onChange }) {
 export default function Result() {
   const { id } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const initial = location.state || null;
 
   const [data, setData] = useState(initial);
@@ -157,6 +160,26 @@ export default function Result() {
           <Link to="/history" className="btn-secondary w-full justify-center py-3.5 sm:w-auto sm:py-2">
             History
           </Link>
+          {data?.input_description && (
+            <button
+              type="button"
+              onClick={() =>
+                navigate("/generate", {
+                  state: {
+                    prefill: {
+                      text: data.input_description,
+                      provider: data.cloud_provider,
+                      environment: data.environment,
+                      inputType: data.input_type,
+                    },
+                  },
+                })
+              }
+              className="btn-secondary w-full justify-center py-3.5 sm:w-auto sm:py-2"
+            >
+              Re-generate
+            </button>
+          )}
           <Link to="/generate" className="btn-primary w-full justify-center py-3.5 sm:w-auto sm:py-2">
             New generation
           </Link>
@@ -167,6 +190,10 @@ export default function Result() {
         <aside className="min-w-0 space-y-4 xl:sticky xl:top-20 xl:self-start">
           <MatchScoreRing percent={data.diagram_match_percent ?? 0} />
           <ComplexityBadge resources={data.resources_identified || []} />
+          <SecurityScorePanel
+            files={data.files || {}}
+            securityWarnings={data.security_warnings || []}
+          />
           <InsightsDeck
             improvementAdvice={data.improvement_advice || []}
             securityWarnings={data.security_warnings || []}
@@ -175,6 +202,12 @@ export default function Result() {
           <CostEstimator
             resources={data.resources_identified || []}
             cloudProvider={data.cloud_provider}
+          />
+          <CostOptimizer
+            files={data.files || {}}
+            resources={data.resources_identified || []}
+            cloudProvider={data.cloud_provider}
+            environment={data.environment}
           />
           <MermaidExport resources={data.resources_identified || []} />
           <FileDiffSummary summary={data.file_diff_summary} />

@@ -244,6 +244,8 @@ def _response_from_record(record: models.Generation, request_id: str | None) -> 
         generation_id=record.id,
         cloud_provider=record.cloud_provider,
         environment=record.environment,
+        input_type=record.input_type or "text",
+        input_description=record.input_description,
         resources_identified=record.resources_identified or [],
         assumptions=record.assumptions or [],
         files=record.generated_files,
