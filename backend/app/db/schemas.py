@@ -85,6 +85,8 @@ class GenerateResponse(BaseModel):
     security_warnings: list[str] = []
     terraform_validation: dict[str, Any] | None = None
     file_diff_summary: dict[str, Any] | None = None
+    confidence_scores: dict[str, int] = {}
+    placeholders: list[str] = []
     request_id: str | None = None
     created_at: datetime
 
@@ -103,11 +105,14 @@ class FeedbackRequest(BaseModel):
     generation_id: str
     rating: int = Field(ge=1, le=5)
     comment: str | None = None
+    feedback_type: str | None = Field(default=None, max_length=50)
 
 
 class FeedbackResponse(BaseModel):
     id: str
     generation_id: str
+    user_id: str | None = None
+    feedback_type: str | None = None
     rating: int
     comment: str | None = None
     created_at: datetime
@@ -121,6 +126,8 @@ class ClaudeOutput(BaseModel):
     resources_identified: list[str] = []
     files: dict[str, str]
     usage_instructions: str | None = None
+    confidence_scores: dict[str, int] = {}
+    placeholders: list[str] = []
 
 
 class HealthResponse(BaseModel):
@@ -164,4 +171,9 @@ class TokenResponse(BaseModel):
 
 
 class AttachSessionBody(BaseModel):
+    session_id: str = Field(min_length=1, max_length=255)
+
+
+class GoogleAuthBody(BaseModel):
+    id_token: str = Field(min_length=1, description="Google ID token from the GSI credential response")
     session_id: str = Field(min_length=1, max_length=255)

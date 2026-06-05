@@ -70,6 +70,9 @@ class Settings(BaseSettings):
     RATE_LIMIT_GENERATE: str = "5/minute"
     RATE_LIMIT_AUTH: str = "20/minute"
 
+    # Google OAuth — set to your Google Cloud OAuth 2.0 Client ID to enable "Sign in with Google".
+    GOOGLE_CLIENT_ID: str = Field(default="", description="Google OAuth 2.0 Client ID for Sign-in with Google")
+
     # HS256 signing secret for JWT access tokens. Override in production.
     JWT_SECRET: str = "change-me-in-production-use-a-long-random-string"
     JWT_EXPIRE_MINUTES: int = 60 * 24 * 7

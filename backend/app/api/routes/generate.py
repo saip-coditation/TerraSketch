@@ -49,7 +49,15 @@ class PipelineResult:
     security_warnings: list[str]
     terraform_validation: dict[str, Any] | None
     file_diff_summary: dict[str, Any] | None
+    confidence_scores: dict[str, int] = None
+    placeholders: list[str] = None
     canon_applied: bool = False
+
+    def __post_init__(self):
+        if self.confidence_scores is None:
+            self.confidence_scores = {}
+        if self.placeholders is None:
+            self.placeholders = []
 
 
 class GenerationPipeline:
@@ -233,6 +241,8 @@ class GenerationPipeline:
             security_warnings=security_warnings,
             terraform_validation=terraform_validation,
             file_diff_summary=file_diff_summary,
+            confidence_scores=dict(ai_output.confidence_scores or {}),
+            placeholders=list(ai_output.placeholders or []),
             canon_applied=canon_applied,
         )
 
@@ -255,6 +265,8 @@ def _response_from_record(record: models.Generation, request_id: str | None) -> 
         security_warnings=record.security_warnings or [],
         terraform_validation=record.terraform_validation,
         file_diff_summary=record.file_diff_summary,
+        confidence_scores=record.confidence_scores or {},
+        placeholders=record.placeholders or [],
         request_id=request_id,
         created_at=record.created_at,
     )
@@ -378,6 +390,8 @@ async def post_generate(
             security_warnings=result.security_warnings,
             terraform_validation=result.terraform_validation,
             file_diff_summary=result.file_diff_summary,
+            confidence_scores=result.confidence_scores,
+            placeholders=result.placeholders,
         )
         db.add(record)
         db.commit()

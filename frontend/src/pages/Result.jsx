@@ -15,6 +15,8 @@ import CostOptimizer from "../components/insights/CostOptimizer.jsx";
 import MermaidExport from "../components/insights/MermaidExport.jsx";
 import ComplexityBadge from "../components/insights/ComplexityBadge.jsx";
 import SecurityScorePanel from "../components/insights/SecurityScorePanel.jsx";
+import TfvarsGenerator from "../components/insights/TfvarsGenerator.jsx";
+import ComplianceChecker from "../components/insights/ComplianceChecker.jsx";
 import { getSessionId } from "../utils/sessionId.js";
 
 function formatProvider(p) {
@@ -57,6 +59,48 @@ function StarRating({ value, onChange }) {
   );
 }
 
+function ConfidenceScores({ scores }) {
+  const entries = Object.entries(scores).sort((a, b) => a[1] - b[1]);
+  const avg = Math.round(entries.reduce((s, [, v]) => s + v, 0) / entries.length);
+
+  const color = (v) =>
+    v >= 80 ? "bg-emerald-500" : v >= 60 ? "bg-amber-500" : "bg-rose-500";
+  const label = (v) =>
+    v >= 80 ? "text-emerald-300" : v >= 60 ? "text-amber-300" : "text-rose-300";
+
+  return (
+    <div className="card p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+          Confidence Scores
+        </h3>
+        <span className={`text-sm font-bold ${label(avg)}`}>{avg}%</span>
+      </div>
+      <div className="space-y-2">
+        {entries.map(([name, score]) => (
+          <div key={name}>
+            <div className="mb-0.5 flex items-center justify-between">
+              <span className="text-xs text-slate-300 truncate">{name}</span>
+              <span className={`ml-2 shrink-0 text-xs font-medium ${label(score)}`}>{score}%</span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+              <div
+                className={`h-full rounded-full transition-all ${color(score)}`}
+                style={{ width: `${score}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+      {entries.some(([, v]) => v < 60) && (
+        <p className="mt-3 text-xs text-rose-300/80">
+          Low-confidence resources need manual review before deployment.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function Result() {
   const { id } = useParams();
   const location = useLocation();
@@ -68,6 +112,7 @@ export default function Result() {
   const [error, setError] = useState(null);
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState("");
+  const [feedbackType, setFeedbackType] = useState("");
   const [feedbackState, setFeedbackState] = useState("idle");
 
   useEffect(() => {
@@ -94,7 +139,12 @@ export default function Result() {
     if (!rating) return;
     setFeedbackState("submitting");
     try {
-      await postFeedback({ generationId: id, rating, comment });
+      await postFeedback({
+        generationId: id,
+        rating,
+        comment,
+        feedbackType: feedbackType || null,
+      });
       setFeedbackState("submitted");
     } catch (err) {
       setFeedbackState("error");
@@ -186,9 +236,31 @@ export default function Result() {
         </div>
       </header>
 
+      {/* Starter template warning banner */}
+      <div className="flex items-start gap-3 rounded-xl border border-amber-400/25 bg-amber-500/10 px-4 py-3.5">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0 text-amber-400" aria-hidden>
+          <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+          <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-amber-200">
+            Starter template — not production-ready
+          </p>
+          <p className="mt-0.5 text-xs text-amber-300/70">
+            This Terraform is ~60–70% complete. Search for <code className="rounded bg-amber-400/10 px-1 font-mono text-amber-300">&lt;REPLACE_*&gt;</code> placeholders and review all <code className="rounded bg-amber-400/10 px-1 font-mono text-amber-300"># TODO</code> comments before deploying.
+            {data.placeholders?.length > 0 && (
+              <span className="ml-1 font-medium text-amber-300">{data.placeholders.length} placeholder{data.placeholders.length !== 1 ? "s" : ""} found.</span>
+            )}
+          </p>
+        </div>
+      </div>
+
       <div className="grid min-w-0 gap-6 lg:gap-8 xl:grid-cols-[minmax(0,340px),minmax(0,1fr)] xl:items-start">
         <aside className="min-w-0 space-y-4 xl:sticky xl:top-20 xl:self-start">
           <MatchScoreRing percent={data.diagram_match_percent ?? 0} />
+          {data.confidence_scores && Object.keys(data.confidence_scores).length > 0 && (
+            <ConfidenceScores scores={data.confidence_scores} />
+          )}
           <ComplexityBadge resources={data.resources_identified || []} />
           <SecurityScorePanel
             files={data.files || {}}
@@ -209,6 +281,8 @@ export default function Result() {
             cloudProvider={data.cloud_provider}
             environment={data.environment}
           />
+          <ComplianceChecker files={data.files || {}} />
+          <TfvarsGenerator files={data.files || {}} />
           <MermaidExport resources={data.resources_identified || []} />
           <FileDiffSummary summary={data.file_diff_summary} />
           <ShareAndGitCard
@@ -250,6 +324,19 @@ export default function Result() {
             ) : (
               <div className="mt-3 space-y-3">
                 <StarRating value={rating} onChange={setRating} />
+                <select
+                  className="input text-sm"
+                  value={feedbackType}
+                  onChange={(e) => setFeedbackType(e.target.value)}
+                >
+                  <option value="">Category (optional)</option>
+                  <option value="accuracy">Accuracy — resources don't match my design</option>
+                  <option value="quality">Code quality — syntax or logic issues</option>
+                  <option value="security">Security — warnings or findings</option>
+                  <option value="cost">Cost — recommendations</option>
+                  <option value="compliance">Compliance — checker results</option>
+                  <option value="general">General feedback</option>
+                </select>
                 <textarea
                   className="textarea min-h-[80px]"
                   placeholder="Optional comment — what worked or didn't?"

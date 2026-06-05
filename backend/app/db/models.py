@@ -62,6 +62,8 @@ class Generation(Base):
     diagram_match_percent: Mapped[int | None] = mapped_column(Integer, nullable=True)
     improvement_advice: Mapped[list | None] = mapped_column(JSON, nullable=True)
     security_warnings: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    confidence_scores: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    placeholders: Mapped[list | None] = mapped_column(JSON, nullable=True)
     terraform_validation: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     file_diff_summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     agent_trace: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -81,11 +83,16 @@ class Feedback(Base):
     generation_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("generations.id"), nullable=False
     )
+    user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True, index=True
+    )
+    feedback_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     rating: Mapped[int] = mapped_column(Integer, nullable=False)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
     generation: Mapped[Generation] = relationship(back_populates="feedback")
+    user: Mapped[User | None] = relationship()
 
 
 class UserPreference(Base):

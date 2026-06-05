@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import {
   attachSession as apiAttachSession,
   getMe,
+  googleAuthApi,
   loginUser,
   logoutApi,
   registerUser,
@@ -65,6 +66,16 @@ export function AuthProvider({ children }) {
     [linkAnonymousSession]
   );
 
+  const signInWithGoogle = useCallback(
+    async (idToken) => {
+      const data = await googleAuthApi(idToken, getSessionId());
+      setStoredToken(data.access_token);
+      setUser(data.user);
+      // Session is already linked server-side in the /auth/google endpoint
+    },
+    []
+  );
+
   const signOut = useCallback(async () => {
     await logoutApi();
     setStoredToken(null);
@@ -78,6 +89,7 @@ export function AuthProvider({ children }) {
       signIn,
       signUp,
       signOut,
+      signInWithGoogle,
       refresh,
     }),
     [user, ready, signIn, signUp, signOut, refresh]

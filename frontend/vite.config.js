@@ -4,7 +4,7 @@ import react from "@vitejs/plugin-react";
 /** Forward original host/proto so FastAPI / SQLAdmin behind this proxy build correct URLs & cookies (Cloudflare trycloudflare, ngrok, etc.). */
 function proxyToBackend() {
   return {
-    target: "http://127.0.0.1:8000",
+    target: "http://127.0.0.1:8010",
     // Keep browser Host (e.g. *.trycloudflare.com); changeOrigin:true breaks /admin sessions & redirects.
     changeOrigin: false,
     secure: false,

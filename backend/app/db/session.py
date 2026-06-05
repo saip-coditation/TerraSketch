@@ -22,14 +22,26 @@ settings = get_settings()
 # ── Sync engine (SQLite + Postgres, all existing routes) ───────────────────
 
 connect_args: dict = {}
-if settings.DATABASE_URL.startswith("sqlite"):
+_is_postgres = settings.DATABASE_URL.startswith("postgresql")
+_is_sqlite = settings.DATABASE_URL.startswith("sqlite")
+
+if _is_sqlite:
     connect_args["check_same_thread"] = False
+elif _is_postgres:
+    connect_args["connect_timeout"] = 10
+    connect_args["options"] = "-c statement_timeout=30000"
 
 engine = create_engine(
     settings.DATABASE_URL,
     pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10,
+    pool_timeout=30,
+    pool_recycle=300,
     connect_args=connect_args,
     future=True,
+    # pgbouncer (Supabase transaction pooler) compatibility
+    **( {"execution_options": {"no_parameters": True}} if _is_postgres else {} ),
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, future=True)
@@ -76,6 +88,10 @@ try:
     async_engine = create_async_engine(
         _async_url,
         pool_pre_ping=True,
+        pool_size=5,
+        max_overflow=10,
+        pool_timeout=30,
+        pool_recycle=300,
         connect_args=_async_connect_args,
         future=True,
     )

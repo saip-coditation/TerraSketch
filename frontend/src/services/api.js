@@ -135,6 +135,14 @@ export async function attachSession(sessionId) {
   return data;
 }
 
+export async function googleAuthApi(idToken, sessionId) {
+  const { data } = await api.post("/api/auth/google", {
+    id_token: idToken,
+    session_id: sessionId,
+  });
+  return data;
+}
+
 export async function logoutApi() {
   try {
     await api.post("/api/auth/logout");
@@ -143,11 +151,12 @@ export async function logoutApi() {
   }
 }
 
-export async function postFeedback({ generationId, rating, comment }) {
+export async function postFeedback({ generationId, rating, comment, feedbackType }) {
   const { data } = await api.post("/api/feedback", {
     generation_id: generationId,
     rating,
     comment: comment || null,
+    feedback_type: feedbackType || null,
   });
   return data;
 }

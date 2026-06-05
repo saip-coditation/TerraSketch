@@ -11,7 +11,7 @@ from app.core.config import get_settings
 from app.core.limiter import limiter
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db import models
-from app.db.schemas import AttachSessionBody, TokenResponse, UserLogin, UserPublic, UserRegister
+from app.db.schemas import AttachSessionBody, GoogleAuthBody, TokenResponse, UserLogin, UserPublic, UserRegister
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -103,6 +103,68 @@ def attach_session(
     db.commit()
     linked = result.rowcount if result.rowcount is not None else 0
     return {"linked_generations": linked}
+
+
+@router.post(
+    "/auth/google",
+    response_model=TokenResponse,
+    summary="Sign in / sign up with a Google ID token (from Sign in with Google button)",
+)
+@limiter.limit(_settings.RATE_LIMIT_AUTH)
+def google_auth(request: Request, payload: GoogleAuthBody, db: Session = Depends(get_db)) -> TokenResponse:
+    if not _settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=501, detail="Google Sign-In is not configured on this server")
+
+    try:
+        from google.oauth2 import id_token as google_id_token
+        from google.auth.transport import requests as google_requests
+        id_info = google_id_token.verify_oauth2_token(
+            payload.id_token,
+            google_requests.Request(),
+            _settings.GOOGLE_CLIENT_ID,
+        )
+    except Exception as exc:
+        logger.warning("Google token verification failed: %s", exc)
+        raise HTTPException(status_code=401, detail="Invalid Google token") from exc
+
+    email_norm = (id_info.get("email") or "").strip().lower()
+    if not email_norm:
+        raise HTTPException(status_code=400, detail="Google account has no email address")
+
+    if not id_info.get("email_verified", False):
+        raise HTTPException(status_code=400, detail="Google email is not verified")
+
+    # Find or create user
+    user = db.scalars(select(models.User).where(models.User.email == email_norm)).first()
+    if not user:
+        user = models.User(
+            email=email_norm,
+            name=(id_info.get("name") or "").strip() or None,
+            password_hash=None,
+            provider="google",
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        logger.info("Created Google user %s", email_norm)
+    elif user.provider == "email":
+        # Allow Google login for existing email accounts — provider stays "email"
+        pass
+
+    # Attach any anonymous session generations to this account
+    sid = payload.session_id.strip()
+    if sid:
+        result = db.execute(
+            update(models.Generation)
+            .where(models.Generation.session_id == sid, models.Generation.user_id.is_(None))
+            .values(user_id=user.id)
+        )
+        db.commit()
+        linked = result.rowcount or 0
+        if linked:
+            logger.info("Google auth: linked %d generation(s) for session %s to user %s", linked, sid, email_norm)
+
+    return _token_for_user(user)
 
 
 @router.post("/auth/logout", summary="Client should discard token; noop on server")

@@ -5,6 +5,7 @@ import { useTheme } from "../context/ThemeContext.jsx";
 
 const links = [
   { to: "/generate", label: "Generate" },
+  { to: "/library", label: "Library" },
   { to: "/templates", label: "Templates" },
   { to: "/history", label: "History" },
   { to: "/docs", label: "Docs" },
