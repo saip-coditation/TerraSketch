@@ -99,31 +99,41 @@ function StatCard({ label, value, sub, icon, valueColor = "text-slate-100", acce
 // ── Star Rating ──────────────────────────────────────────────────────────────
 
 function StarRating({ value, onChange }) {
+  const [hovered, setHovered] = React.useState(0);
   return (
     <div className="flex flex-wrap items-center gap-0.5 sm:gap-1">
-      {[1, 2, 3, 4, 5].map((n) => (
-        <button
-          key={n}
-          type="button"
-          onClick={() => onChange(n)}
-          className="grid h-11 w-11 place-items-center text-slate-500 transition active:scale-95 hover:text-amber-300 sm:h-9 sm:w-9"
-          aria-label={`Rate ${n} out of 5`}
-        >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill={value >= n ? "currentColor" : "none"}
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className={value >= n ? "text-amber-300" : ""}
+      {[1, 2, 3, 4, 5].map((n) => {
+        const active = value >= n;
+        const highlight = hovered >= n;
+        return (
+          <button
+            key={n}
+            type="button"
+            onClick={() => onChange(n)}
+            onMouseEnter={() => setHovered(n)}
+            onMouseLeave={() => setHovered(0)}
+            className="grid h-11 w-11 place-items-center transition-transform active:scale-90 sm:h-9 sm:w-9"
+            aria-label={`Rate ${n} out of 5`}
           >
-            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-          </svg>
-        </button>
-      ))}
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill={active || highlight ? "currentColor" : "none"}
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`transition-colors ${active ? "text-amber-400" : highlight ? "text-amber-300" : "text-slate-400"}`}
+            >
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+            </svg>
+          </button>
+        );
+      })}
+      {value === 0 && hovered === 0 && (
+        <span className="ml-2 text-xs text-slate-500">Click to rate</span>
+      )}
     </div>
   );
 }
@@ -302,7 +312,10 @@ export default function Result() {
   }, [id, initial]);
 
   const submitFeedback = async () => {
-    if (!rating) return;
+    if (!rating) {
+      setFeedbackState("no-rating");
+      return;
+    }
     setFeedbackState("submitting");
     try {
       await postFeedback({ generationId: id, rating, comment, feedbackType: feedbackType || null });
@@ -610,7 +623,12 @@ export default function Result() {
               </div>
             ) : (
               <div className="space-y-3">
-                <StarRating value={rating} onChange={setRating} />
+                <div>
+                  <StarRating value={rating} onChange={(v) => { setRating(v); if (feedbackState === "no-rating") setFeedbackState("idle"); }} />
+                  {feedbackState === "no-rating" && (
+                    <p className="mt-1.5 text-xs text-amber-400">Please select a star rating before submitting.</p>
+                  )}
+                </div>
                 <select
                   className="input text-sm"
                   value={feedbackType}
@@ -634,7 +652,7 @@ export default function Result() {
                   <Button
                     className="w-full justify-center sm:w-auto"
                     onClick={submitFeedback}
-                    disabled={!rating || feedbackState === "submitting"}
+                    disabled={feedbackState === "submitting"}
                   >
                     {feedbackState === "submitting" ? "Sending…" : "Submit feedback"}
                   </Button>

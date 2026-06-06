@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -44,16 +43,14 @@ async def post_feedback(
     db.commit()
     db.refresh(record)
 
-    # Fire-and-forget email — never delays the HTTP response
+    # Pass the async function directly — FastAPI/Starlette awaits it correctly
     background_tasks.add_task(
-        asyncio.ensure_future,
-        send_feedback_email(
-            generation_id=payload.generation_id,
-            rating=payload.rating,
-            feedback_type=payload.feedback_type,
-            comment=payload.comment,
-            user_id=current_user.id if current_user else None,
-        ),
+        send_feedback_email,
+        generation_id=payload.generation_id,
+        rating=payload.rating,
+        feedback_type=payload.feedback_type,
+        comment=payload.comment,
+        user_id=current_user.id if current_user else None,
     )
 
     return FeedbackResponse(
