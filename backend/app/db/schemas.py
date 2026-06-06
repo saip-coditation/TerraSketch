@@ -11,6 +11,7 @@ CloudProvider = Literal["aws", "azure", "gcp"]
 Environment = Literal["dev", "staging", "production"]
 InputType = Literal["image", "text", "draw"]
 ArchitecturePreset = Literal["auto", "simple_web", "microservice", "serverless"]
+ScaleTier = Literal["small", "mid", "high"]
 
 
 class GenerateRequest(BaseModel):
@@ -38,6 +39,10 @@ class GenerateRequest(BaseModel):
     text_description: str | None = Field(
         default=None,
         description="Text description of the architecture. Required when input_type='text' or 'draw'.",
+    )
+    scale_tier: ScaleTier = Field(
+        default="small",
+        description="Target scale: small (0-100 users), mid (100-1000 users), high (1000+ users).",
     )
     session_id: str = Field(min_length=1, max_length=255)
     dry_run: bool = Field(
@@ -128,6 +133,45 @@ class ClaudeOutput(BaseModel):
     usage_instructions: str | None = None
     confidence_scores: dict[str, int] = {}
     placeholders: list[str] = []
+
+
+class ReviewIssue(BaseModel):
+    severity: Literal["critical", "high", "medium", "low"]
+    category: Literal["security", "cost", "reliability", "best_practice", "compliance"]
+    title: str
+    detail: str
+    file: str
+    fix: str
+
+
+class ReviewRequest(BaseModel):
+    files: dict[str, str] = Field(
+        description="Terraform file contents keyed by filename (main.tf, variables.tf, etc.)",
+        min_length=1,
+    )
+    cloud_provider: CloudProvider | None = Field(
+        default=None,
+        description="Cloud provider hint — auto-detected from files if omitted",
+    )
+
+    @field_validator("files")
+    @classmethod
+    def _check_files(cls, v: dict[str, str]) -> dict[str, str]:
+        if not v:
+            raise ValueError("At least one Terraform file is required")
+        for name, content in v.items():
+            if len(content) > 500_000:
+                raise ValueError(f"File {name!r} exceeds 500KB limit")
+        return v
+
+
+class ReviewResponse(BaseModel):
+    cloud_provider: str
+    issues: list[ReviewIssue] = []
+    summary: str = ""
+    changes: list[str] = []
+    improved_files: dict[str, str] = {}
+    original_files: dict[str, str] = {}
 
 
 class HealthResponse(BaseModel):

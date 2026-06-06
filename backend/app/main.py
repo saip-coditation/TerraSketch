@@ -171,6 +171,9 @@ app.include_router(v2_generate_routes.router, prefix="/api", tags=["generate-v2"
 app.include_router(history_routes.router, prefix="/api", tags=["history"])
 app.include_router(feedback_routes.router, prefix="/api", tags=["feedback"])
 
+from app.api.routes import review as review_routes  # noqa: E402
+app.include_router(review_routes.router, prefix="/api", tags=["review"])
+
 
 @app.get("/", tags=["meta"])
 def root() -> dict:

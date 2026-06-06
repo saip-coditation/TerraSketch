@@ -132,17 +132,82 @@ def build_system_prompt(*, cloud_provider: str) -> str:
 SYSTEM_PROMPT = build_system_prompt(cloud_provider="aws")
 
 
+_SCALE_INSTRUCTIONS: dict[str, str] = {
+    "small": """
+SCALE TIER: Small (0–100 concurrent users)
+Apply these sizing and DR choices, and add a # WHY comment above each one explaining the reasoning:
+
+SIZING:
+- EC2/VMs: t3.small or t3.medium (burstable, cost-efficient for low traffic)
+- RDS/Database: db.t3.micro or db.t3.small, single-AZ (cost-optimised — 100 users don't need Multi-AZ)
+- Auto Scaling: min=1, max=3, target CPU 60% (avoids cold-start latency without over-provisioning)
+- ElastiCache/Redis: cache.t3.micro (minimal caching, can be omitted if budget is tight)
+- Lambda concurrency: reserved_concurrent_executions = 10
+
+DISASTER RECOVERY (add as # DR-OPTION comments in code):
+- Backup strategy: RDS automated backups (retention = 7 days), S3 versioning enabled
+- RPO/RTO target: ~1 hour RPO, ~30 min RTO (manual restore from snapshot)
+- Reasoning: At small scale, full Multi-AZ is over-engineered; a restore-from-backup strategy keeps costs low
+- DR comment format: # DR-OPTION: For higher availability, switch to Multi-AZ RDS (adds ~2x cost)
+""",
+
+    "mid": """
+SCALE TIER: Mid (100–1,000 concurrent users)
+Apply these sizing and DR choices, and add a # WHY comment above each one explaining the reasoning:
+
+SIZING:
+- EC2/VMs: t3.large or m5.large (dedicated CPU needed for consistent 100-1k user load)
+- RDS/Database: db.m5.large, Multi-AZ enabled (failover within ~60s protects against AZ failure)
+- Auto Scaling: min=2, max=10, target CPU 50% (2 minimum ensures HA, room to burst 10x)
+- ElastiCache/Redis: cache.m5.large, 1 read replica (reduce DB load for repeated queries)
+- Lambda concurrency: reserved_concurrent_executions = 100
+- ALB: enabled with at least 2 target group instances across 2 AZs
+
+DISASTER RECOVERY:
+- Backup strategy: RDS Multi-AZ + automated backups (retention = 14 days), S3 cross-region replication
+- RPO/RTO target: ~15 min RPO, ~5 min RTO (Multi-AZ automatic failover)
+- Read replicas: add 1 RDS read replica for reporting/analytics workloads
+- Reasoning: Multi-AZ is justified — 1,000 users mean downtime has real business impact
+- DR comment format: # DR-OPTION: Add cross-region RDS read replica for disaster recovery in a second region
+""",
+
+    "high": """
+SCALE TIER: High (1,000+ concurrent users)
+Apply these sizing and DR choices, and add a # WHY comment above each one explaining the reasoning:
+
+SIZING:
+- EC2/VMs: m5.xlarge or c5.2xlarge minimum, use Auto Scaling Groups with multiple AZs
+- RDS/Database: db.r5.2xlarge, Multi-AZ mandatory, consider Aurora with auto-scaling read replicas
+- Auto Scaling: min=3, max=50 (or unlimited for Lambda), target CPU 40% (scale out early to avoid latency spike)
+- ElastiCache/Redis: cache.r6g.xlarge with cluster mode enabled (horizontal sharding for 10k+ ops/sec)
+- CDN: CloudFront or Azure CDN mandatory — offload static content from origin at this scale
+- Connection pooling: RDS Proxy (AWS) or PgBouncer required — direct connections exhaust DB connection limits
+- WAF: mandatory at this scale — DDoS protection is critical
+
+DISASTER RECOVERY:
+- Backup strategy: Continuous replication — Aurora Global Database (AWS) / Azure Geo-Redundant (Azure) / Cloud SQL HA (GCP)
+- RPO/RTO target: <1 min RPO, <2 min RTO (automated failover, no manual intervention)
+- Multi-region: add a second region with active-passive failover via Route53 health checks (AWS) or Traffic Manager (Azure)
+- Chaos engineering: add # CHAOS-TEST comments noting what to validate (instance failure, AZ failure, DB failover)
+- Reasoning: 1,000+ users means P99 latency and availability SLAs are business-critical; over-provisioning is cheaper than downtime
+- DR comment format: # DR-OPTION: Enable Aurora Global Database for <1s cross-region replication (required for 99.99% SLA)
+""",
+}
+
+
 def build_user_message(
     cloud_provider: str,
     environment: str,
     input_type: str,
     text_description: str | None = None,
     generation_hints: str | None = None,
+    scale_tier: str = "small",
 ) -> str:
     """Construct the user-facing message body for a generation request."""
     cloud_provider = cloud_provider.lower().strip()
     environment = environment.lower().strip()
     input_type = input_type.lower().strip()
+    scale_tier = (scale_tier or "small").lower().strip()
 
     parts = [
         f"Analyze the following cloud architecture and generate Terraform code for {cloud_provider}.",
@@ -173,6 +238,11 @@ def build_user_message(
         ]
     )
 
+    # Inject scale tier instructions
+    scale_block = _SCALE_INSTRUCTIONS.get(scale_tier, _SCALE_INSTRUCTIONS["small"])
+    parts.append(scale_block)
+    parts.append("")
+
     hints = (generation_hints or "").strip()
     if hints:
         parts.extend(
@@ -187,6 +257,7 @@ def build_user_message(
         [
             "Please generate a Terraform starter project following all rules in your system instructions.",
             "Use <REPLACE_*> placeholders for any organization-specific or unknown values. Add # TODO comments above each placeholder.",
+            "Add # WHY comments explaining sizing decisions and # DR-OPTION comments for disaster recovery alternatives.",
             "Include confidence_scores for each major resource group and list all placeholders used.",
             "Before emitting JSON, verify resources_identified matches the resources in main.tf and that variables.tf declares every var used.",
             "Return ONLY the JSON object as specified.",

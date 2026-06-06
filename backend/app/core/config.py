@@ -87,6 +87,13 @@ class Settings(BaseSettings):
     # When true, skip `terraform validate` subprocess after generation (faster local dev).
     SKIP_TERRAFORM_VALIDATE: bool = False
 
+    # SMTP email for feedback notifications (leave blank to disable silently)
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    FEEDBACK_EMAIL: str = "phapalesai25@gmail.com"
+
     @property
     def allowed_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]

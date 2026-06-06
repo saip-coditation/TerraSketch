@@ -165,6 +165,7 @@ def generate_terraform(
     text_description: str | None = None,
     image_base64: str | None = None,
     generation_hints: str | None = None,
+    scale_tier: str = "small",
 ) -> ClaudeOutput:
     cloud_provider = cloud_provider.lower().strip()
     files_by_provider = {
@@ -173,8 +174,10 @@ def generate_terraform(
         "gcp": _gcp_files(environment),
     }
     files = files_by_provider.get(cloud_provider) or _aws_files(environment)
+    scale_label = {"small": "0–100 users", "mid": "100–1,000 users", "high": "1,000+ users"}.get(scale_tier, scale_tier)
     assumptions = [
         "Generated in mock mode (no paid API call).",
+        f"Scale tier: {scale_tier} ({scale_label}) — sizing comments are illustrative only in mock mode.",
         "Resources are scaffolding templates and should be customized before production use.",
     ]
     if input_type == "image":

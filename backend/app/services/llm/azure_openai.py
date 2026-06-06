@@ -286,6 +286,7 @@ def generate_terraform(
     text_description: str | None = None,
     image_base64: str | None = None,
     generation_hints: str | None = None,
+    scale_tier: str = "small",
 ) -> ClaudeOutput:
     settings = get_settings()
     endpoint = (settings.AZURE_OPENAI_ENDPOINT or "").strip()
@@ -305,6 +306,7 @@ def generate_terraform(
         input_type=input_type,
         text_description=text_description,
         generation_hints=generation_hints,
+        scale_tier=scale_tier,
     )
 
     if input_type == "image" and image_base64:

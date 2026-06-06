@@ -109,6 +109,7 @@ def _build_user_content(
     text_description: str | None,
     image_base64: str | None,
     generation_hints: str | None = None,
+    scale_tier: str = "small",
 ) -> list[dict[str, Any]]:
     user_text = build_user_message(
         cloud_provider=cloud_provider,
@@ -116,6 +117,7 @@ def _build_user_content(
         input_type=input_type,
         text_description=text_description,
         generation_hints=generation_hints,
+        scale_tier=scale_tier,
     )
     content: list[dict[str, Any]] = []
     if input_type == "image" and image_base64:
@@ -138,6 +140,7 @@ async def generate_terraform(
     text_description: str | None = None,
     image_base64: str | None = None,
     generation_hints: str | None = None,
+    scale_tier: str = "small",
 ) -> ClaudeOutput:
     """Call Claude with forced tool-use and return a validated ClaudeOutput."""
     settings = get_settings()
@@ -152,6 +155,7 @@ async def generate_terraform(
         text_description=text_description,
         image_base64=image_base64,
         generation_hints=generation_hints,
+        scale_tier=scale_tier,
     )
 
     system_prompt = build_system_prompt(cloud_provider=cloud_provider)

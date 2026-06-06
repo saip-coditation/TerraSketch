@@ -2,9 +2,11 @@ import React, { useState } from "react";
 import { NavLink, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTheme } from "../context/ThemeContext.jsx";
+import { CURRENT_VERSION } from "../data/releases.js";
 
 const links = [
   { to: "/generate", label: "Generate" },
+  { to: "/review", label: "Review" },
   { to: "/library", label: "Library" },
   { to: "/templates", label: "Templates" },
   { to: "/history", label: "History" },
@@ -84,6 +86,20 @@ export default function Navbar() {
               {l.label}
             </NavLink>
           ))}
+          {/* Release notes icon with badge */}
+          <Link
+            to="/releases"
+            title={`What's new — v${CURRENT_VERSION}`}
+            className="relative ml-1 grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/>
+            </svg>
+            <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-brand-500 text-[8px] font-bold leading-none text-white ring-2 ring-ink-950">
+              N
+            </span>
+          </Link>
+
           {ready && user ? (
             <>
               <span className="ml-2 max-w-[10rem] truncate text-xs text-slate-400" title={user.email}>
@@ -154,6 +170,20 @@ export default function Navbar() {
                 {l.label}
               </NavLink>
             ))}
+            <NavLink
+              to="/releases"
+              onClick={() => setMenuOpen(false)}
+              className={({ isActive }) =>
+                `flex min-h-[48px] items-center gap-2 rounded-xl px-4 text-base font-medium ${
+                  isActive ? "bg-white/10 text-white" : "text-slate-300"
+                }`
+              }
+            >
+              What&apos;s New
+              <span className="rounded-full bg-brand-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                v{CURRENT_VERSION}
+              </span>
+            </NavLink>
             {ready && user ? (
               <>
                 <p className="mt-2 break-all px-4 text-xs text-slate-500">{user.email}</p>

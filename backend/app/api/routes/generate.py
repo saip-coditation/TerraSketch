@@ -327,6 +327,7 @@ async def post_generate(
             text_description=payload.text_description,
             image_base64=payload.image_base64,
             generation_hints=hints_text or None,
+            scale_tier=payload.scale_tier,
         )
     except LLMServiceError as exc:
         logger.warning("LLM service error: %s", exc)

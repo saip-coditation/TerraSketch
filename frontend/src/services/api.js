@@ -166,6 +166,11 @@ export async function getHealth() {
   return data;
 }
 
+export async function reviewTerraform(payload) {
+  const { data } = await api.post("/api/review", payload);
+  return data;
+}
+
 export function getApiBaseUrl() {
   return baseURL.replace(/\/$/, "");
 }

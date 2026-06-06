@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import asyncio
+import logging
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_optional_user
+from app.core.email import send_feedback_email
 from app.db import models
 from app.db.schemas import FeedbackRequest, FeedbackResponse
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -18,8 +23,9 @@ router = APIRouter()
     status_code=status.HTTP_201_CREATED,
     summary="Submit a 1-5 star rating + optional comment for a generation",
 )
-def post_feedback(
+async def post_feedback(
     payload: FeedbackRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: models.User | None = Depends(get_optional_user),
 ) -> FeedbackResponse:
@@ -37,6 +43,18 @@ def post_feedback(
     db.add(record)
     db.commit()
     db.refresh(record)
+
+    # Fire-and-forget email — never delays the HTTP response
+    background_tasks.add_task(
+        asyncio.ensure_future,
+        send_feedback_email(
+            generation_id=payload.generation_id,
+            rating=payload.rating,
+            feedback_type=payload.feedback_type,
+            comment=payload.comment,
+            user_id=current_user.id if current_user else None,
+        ),
+    )
 
     return FeedbackResponse(
         id=record.id,

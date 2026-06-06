@@ -74,6 +74,7 @@ def generate_terraform(
     text_description: str | None = None,
     image_base64: str | None = None,
     generation_hints: str | None = None,
+    scale_tier: str = "small",
 ) -> ClaudeOutput:
     settings = get_settings()
     if not settings.GEMINI_API_KEY:
@@ -95,6 +96,7 @@ def generate_terraform(
         input_type=input_type,
         text_description=text_description,
         generation_hints=generation_hints,
+        scale_tier=scale_tier,
     )
     system_prompt = build_system_prompt(cloud_provider=cloud_provider)
     full_prompt = (

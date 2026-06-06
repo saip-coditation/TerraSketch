@@ -36,6 +36,7 @@ async def generate_terraform(
     text_description: str | None = None,
     image_base64: str | None = None,
     generation_hints: str | None = None,
+    scale_tier: str = "small",
 ) -> ClaudeOutput:
     settings = get_settings()
     llm_provider = settings.LLM_PROVIDER.lower().strip()
@@ -48,6 +49,7 @@ async def generate_terraform(
         "text_description": text_description,
         "image_base64": image_base64,
         "generation_hints": generation_hints,
+        "scale_tier": scale_tier,
     }
 
     if llm_provider == "mock":

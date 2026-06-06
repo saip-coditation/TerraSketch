@@ -12,6 +12,8 @@ import NotFound from "./pages/NotFound.jsx";
 import SignIn from "./pages/SignIn.jsx";
 import Templates from "./pages/Templates.jsx";
 import Library from "./pages/Library.jsx";
+import Releases from "./pages/Releases.jsx";
+import Review from "./pages/Review.jsx";
 
 export default function App() {
   return (
@@ -25,6 +27,8 @@ export default function App() {
           <Route path="/v2/result" element={<ResultV2 />} />
           <Route path="/templates" element={<Templates />} />
           <Route path="/library" element={<Library />} />
+          <Route path="/releases" element={<Releases />} />
+          <Route path="/review" element={<Review />} />
           <Route path="/history" element={<History />} />
           <Route path="/docs" element={<Docs />} />
           <Route path="/signin" element={<SignIn />} />

@@ -23,6 +23,30 @@ const PRESETS = [
   { id: "serverless", label: "Serverless", description: "API GW · Lambda · DynamoDB/S3" },
 ];
 
+const SCALE_TIERS = [
+  {
+    id: "small",
+    label: "Small",
+    range: "0–100 users",
+    color: "emerald",
+    hint: "t3.small/micro • single-AZ • backup restore DR",
+  },
+  {
+    id: "mid",
+    label: "Mid",
+    range: "100–1K users",
+    color: "brand",
+    hint: "m5.large • Multi-AZ • 15 min RPO",
+  },
+  {
+    id: "high",
+    label: "High",
+    range: "1K+ users",
+    color: "violet",
+    hint: "r5/c5 • multi-region • <1 min RPO",
+  },
+];
+
 export default function GeneratorPanel({ onSubmit, loading, prefill = null }) {
   const [provider, setProvider] = useState(prefill?.provider || "aws");
   const [environment, setEnvironment] = useState(prefill?.environment || "dev");
@@ -36,6 +60,7 @@ export default function GeneratorPanel({ onSubmit, loading, prefill = null }) {
       ? sessionStorage.getItem("terrasketch_last_generation_id") || ""
       : ""
   );
+  const [scaleTier, setScaleTier] = useState("small");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [error, setError] = useState(null);
   const voice = useVoiceToText(setText);
@@ -61,6 +86,7 @@ export default function GeneratorPanel({ onSubmit, loading, prefill = null }) {
         cloud_provider: provider,
         environment,
         architecture_preset: architecturePreset,
+        scale_tier: scaleTier,
         correction_note: correctionNote.trim() || null,
         compare_generation_id: compareGenerationId.trim() || null,
       };
@@ -142,6 +168,41 @@ export default function GeneratorPanel({ onSubmit, loading, prefill = null }) {
               {env.label}
             </button>
           ))}
+        </div>
+      </div>
+
+      {/* Scale tier selector */}
+      <div>
+        <label className="mb-2 block text-sm font-medium text-slate-200">
+          Scale tier
+          <span className="ml-2 text-xs font-normal text-slate-500">sizes instances, replication &amp; DR strategy</span>
+        </label>
+        <div className="grid grid-cols-3 gap-2">
+          {SCALE_TIERS.map((s) => {
+            const active = scaleTier === s.id;
+            const ring = {
+              emerald: active ? "border-emerald-400/50 bg-emerald-500/10 shadow-[0_0_16px_rgba(52,211,153,0.15)]" : "border-white/10 bg-white/[0.03] hover:border-emerald-400/20 hover:bg-emerald-500/5",
+              brand:   active ? "border-brand-400/50 bg-brand-500/10 shadow-glow" : "border-white/10 bg-white/[0.03] hover:border-brand-400/20 hover:bg-brand-500/5",
+              violet:  active ? "border-violet-400/50 bg-violet-500/10 shadow-[0_0_16px_rgba(167,139,250,0.15)]" : "border-white/10 bg-white/[0.03] hover:border-violet-400/20 hover:bg-violet-500/5",
+            }[s.color];
+            const dot = { emerald: "bg-emerald-400", brand: "bg-brand-400", violet: "bg-violet-400" }[s.color];
+            const text = { emerald: "text-emerald-300", brand: "text-brand-300", violet: "text-violet-300" }[s.color];
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setScaleTier(s.id)}
+                className={`rounded-xl border px-3 py-2.5 text-left text-sm transition ${ring}`}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${active ? dot : "bg-slate-600"}`} />
+                  <span className={`font-semibold ${active ? text : "text-slate-200"}`}>{s.label}</span>
+                </div>
+                <span className="mt-0.5 block text-[11px] text-slate-500">{s.range}</span>
+                {active && <span className="mt-1 block text-[10px] leading-relaxed text-slate-400">{s.hint}</span>}
+              </button>
+            );
+          })}
         </div>
       </div>
 
