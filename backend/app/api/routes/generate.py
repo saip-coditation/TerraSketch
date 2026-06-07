@@ -295,24 +295,18 @@ async def post_generate(
     compare_row: models.Generation | None = None
     if payload.compare_generation_id:
         compare_row = db.get(models.Generation, payload.compare_generation_id.strip())
-        if not compare_row:
-            raise HTTPException(status_code=404, detail="compare_generation_id not found")
-        if current_user:
-            if compare_row.user_id and compare_row.user_id != current_user.id:
-                raise HTTPException(
-                    status_code=403,
-                    detail="Cannot compare with a generation from another account",
-                )
-            elif not compare_row.user_id and compare_row.session_id != payload.session_id:
-                raise HTTPException(
-                    status_code=403,
-                    detail="Cannot compare with a generation from another session",
-                )
-        elif compare_row.session_id != payload.session_id:
-            raise HTTPException(
-                status_code=403,
-                detail="Cannot compare with a generation from another session",
-            )
+        if compare_row:
+            # If the generation belongs to someone else, silently skip the diff
+            accessible = True
+            if current_user:
+                if compare_row.user_id and compare_row.user_id != current_user.id:
+                    accessible = False
+                elif not compare_row.user_id and compare_row.session_id != payload.session_id:
+                    accessible = False
+            elif compare_row.session_id != payload.session_id:
+                accessible = False
+            if not accessible:
+                compare_row = None
 
     hints_text = build_generation_hints(
         architecture_preset=payload.architecture_preset,
