@@ -34,8 +34,10 @@ def _send_sync(subject: str, body_html: str, body_text: str) -> None:
     to_addr = getattr(settings, "FEEDBACK_EMAIL", "") or ""
 
     if not smtp_user or not smtp_pass or not to_addr:
-        logger.debug("Email not configured — skipping feedback notification")
+        logger.warning("Email not configured — SMTP_USER=%r SMTP_PASSWORD=%s FEEDBACK_EMAIL=%r",
+                       smtp_user, "set" if smtp_pass else "MISSING", to_addr)
         return
+    logger.info("Sending feedback email via %s:%s → %s", smtp_host, smtp_port, to_addr)
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
