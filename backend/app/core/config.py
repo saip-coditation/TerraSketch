@@ -87,11 +87,8 @@ class Settings(BaseSettings):
     # When true, skip `terraform validate` subprocess after generation (faster local dev).
     SKIP_TERRAFORM_VALIDATE: bool = False
 
-    # SMTP email for feedback notifications (leave blank to disable silently)
-    SMTP_HOST: str = "smtp.gmail.com"
-    SMTP_PORT: int = 587
-    SMTP_USER: str = ""
-    SMTP_PASSWORD: str = ""
+    # Resend API for feedback notifications (https://resend.com — free 3K emails/month)
+    RESEND_API_KEY: str = ""
     FEEDBACK_EMAIL: str = "phapalesai25@gmail.com"
 
     @property
