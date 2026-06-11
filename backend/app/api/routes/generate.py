@@ -398,7 +398,9 @@ async def post_generate(
             result.match_percent,
             rid,
         )
-        return _response_from_record(record, rid)
+        resp = _response_from_record(record, rid)
+        resp.token_usage = ai_output.token_usage
+        return resp
 
     # dry_run: return without persisting
     from datetime import datetime

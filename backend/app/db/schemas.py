@@ -75,6 +75,12 @@ class GeneratedFiles(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class TokenUsage(BaseModel):
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+
 class GenerateResponse(BaseModel):
     generation_id: str
     cloud_provider: CloudProvider
@@ -92,6 +98,7 @@ class GenerateResponse(BaseModel):
     file_diff_summary: dict[str, Any] | None = None
     confidence_scores: dict[str, int] = {}
     placeholders: list[str] = []
+    token_usage: TokenUsage | None = None
     request_id: str | None = None
     created_at: datetime
 
@@ -133,6 +140,7 @@ class ClaudeOutput(BaseModel):
     usage_instructions: str | None = None
     confidence_scores: dict[str, int] = {}
     placeholders: list[str] = []
+    token_usage: TokenUsage | None = None
 
 
 class ReviewIssue(BaseModel):

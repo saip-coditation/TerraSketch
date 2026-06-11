@@ -491,6 +491,27 @@ export default function Result() {
         />
       </div>
 
+      {/* ── Token Usage Card ─────────────────────────────────────────────── */}
+      {data.token_usage && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/8 bg-white/[0.02] px-4 py-3">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-violet-400" aria-hidden>
+            <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+          </svg>
+          <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Token Usage</span>
+          <div className="flex flex-wrap gap-4 ml-1">
+            <span className="text-xs text-slate-400">
+              Prompt: <span className="font-semibold text-slate-200">{data.token_usage.prompt_tokens.toLocaleString()}</span>
+            </span>
+            <span className="text-xs text-slate-400">
+              Completion: <span className="font-semibold text-slate-200">{data.token_usage.completion_tokens.toLocaleString()}</span>
+            </span>
+            <span className="text-xs text-slate-400">
+              Total: <span className="font-bold text-violet-300">{data.token_usage.total_tokens.toLocaleString()}</span>
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* ── Warning banner ───────────────────────────────────────────────── */}
       <div className="flex items-start gap-3 rounded-xl border border-amber-400/25 bg-amber-500/10 px-4 py-3.5">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0 text-amber-400" aria-hidden>

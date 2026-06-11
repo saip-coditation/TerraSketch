@@ -135,6 +135,8 @@ def _call_openai_v1_chat(
     raw = _extract_message_text(choice)
     if not raw:
         raise AzureOpenAIError("OpenAI v1 returned an empty response")
+    # Attach token usage to the response object so callers can read it
+    _call_openai_v1_chat._last_usage = getattr(response, "usage", None)
     return raw
 
 
@@ -324,18 +326,27 @@ def generate_terraform(
         {"role": "user", "content": user_content},
     ]
 
+    from app.db.schemas import TokenUsage
+
     errors: list[str] = []
     max_out = settings.AZURE_OPENAI_MAX_TOKENS
 
+    def _attach_usage(output: ClaudeOutput) -> ClaudeOutput:
+        usage = getattr(_call_openai_v1_chat, "_last_usage", None)
+        if usage:
+            output.token_usage = TokenUsage(
+                prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+                completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
+                total_tokens=getattr(usage, "total_tokens", 0) or 0,
+            )
+        return output
+
     try:
         raw_text = _call_openai_v1_chat(
-            endpoint=endpoint,
-            api_key=key,
-            deployment=deployment,
-            messages=messages,
-            max_tokens=max_out,
+            endpoint=endpoint, api_key=key, deployment=deployment,
+            messages=messages, max_tokens=max_out,
         )
-        return parse_claude_response(raw_text)
+        return _attach_usage(parse_claude_response(raw_text))
     except AzureOpenAIError as exc:
         errors.append(str(exc))
         logger.warning("OpenAI v1 path failed, trying fallbacks: %s", exc)
@@ -343,11 +354,8 @@ def generate_terraform(
     if _is_foundry_services_host(endpoint):
         try:
             raw_text = _call_foundry_models_chat_completions(
-                endpoint=endpoint,
-                api_key=key,
-                deployment=deployment,
-                messages=messages,
-                max_tokens=max_out,
+                endpoint=endpoint, api_key=key, deployment=deployment,
+                messages=messages, max_tokens=max_out,
             )
             return parse_claude_response(raw_text)
         except AzureOpenAIError as exc:
@@ -356,12 +364,8 @@ def generate_terraform(
 
     try:
         raw_text = _call_classic_azure_openai(
-            endpoint=endpoint,
-            api_key=key,
-            deployment=deployment,
-            preferred_version=preferred_version,
-            messages=messages,
-            max_tokens=max_out,
+            endpoint=endpoint, api_key=key, deployment=deployment,
+            preferred_version=preferred_version, messages=messages, max_tokens=max_out,
         )
         return parse_claude_response(raw_text)
     except AzureOpenAIError as exc:
