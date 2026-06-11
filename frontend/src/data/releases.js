@@ -1,8 +1,90 @@
 export const RELEASES = [
   {
-    version: "1.6.0",
-    date: "2025-06-07",
+    version: "1.9.0",
+    date: "2026-06-11",
     badge: "new",
+    title: "Token Usage, Feedback Email & Production Deploy",
+    summary: "Live on Render with auto-deploy, feedback emails via Resend, token usage tracking on every generation, and Google Sign-In in production.",
+    highlights: [
+      {
+        icon: "dashboard",
+        label: "Token usage card",
+        detail: "Every new generation shows a token breakdown (Prompt / Completion / Total) below the KPI cards so you can track LLM cost per generation.",
+      },
+      {
+        icon: "mail",
+        label: "Feedback emails via Resend",
+        detail: "Switched from Gmail SMTP (blocked on Render free tier) to Resend HTTP API. Every star rating now arrives in your inbox instantly with generation ID, category, and comment.",
+      },
+      {
+        icon: "generate",
+        label: "Production deploy on Render",
+        detail: "TerraSketch is live at terrasketch.onrender.com — single Docker container serving both React frontend and FastAPI backend. Auto-deploys on every GitHub push.",
+      },
+      {
+        icon: "shield",
+        label: "Google Sign-In in production",
+        detail: "Fixed VITE_GOOGLE_CLIENT_ID baked into the production build and registered the Render domain as an authorized JavaScript origin in Google Cloud Console.",
+      },
+    ],
+  },
+  {
+    version: "1.8.0",
+    date: "2026-06-11",
+    badge: "new",
+    title: "Bug Fixes — Generation & Feedback",
+    summary: "Fixed the 'Cannot compare with a generation from another account' error, the broken feedback submit button, and the API URL pointing to localhost in production.",
+    highlights: [
+      {
+        icon: "feedback",
+        label: "Feedback submit fixed",
+        detail: "The Submit button was silently blocked by an incorrect asyncio.ensure_future background task pattern. Replaced with FastAPI's native BackgroundTasks which awaits async functions correctly.",
+      },
+      {
+        icon: "warning",
+        label: "Generation compare fixed",
+        detail: "Re-generating after logging in with Google threw a 403 'Cannot compare with a generation from another account'. Now silently skips the diff if the reference generation is inaccessible.",
+      },
+      {
+        icon: "generate",
+        label: "Production API URL fixed",
+        detail: "api.js was falling back to http://localhost:8000 in production builds when VITE_API_URL was empty. Changed to use same-origin (empty string) which correctly routes to the deployed backend.",
+      },
+      {
+        icon: "star",
+        label: "Star rating UX improved",
+        detail: "Submit button no longer silently ignores clicks when no star is selected. Now shows an amber validation message and a hover-preview on the stars with a 'Click to rate' hint.",
+      },
+    ],
+  },
+  {
+    version: "1.7.0",
+    date: "2026-06-11",
+    badge: "new",
+    title: "Scale Tiers & DR Options",
+    summary: "Three generation tiers (Small 0–100, Mid 100–1K, High 1K+ users) with disaster recovery strategies and # WHY / # DR-OPTION comments in every generated file.",
+    highlights: [
+      {
+        icon: "scale",
+        label: "Three scale tiers",
+        detail: "Small maps to Backup & Restore DR, Mid to Warm Standby, High to Active-Active — matching AWS Well-Architected Framework DR strategies.",
+      },
+      {
+        icon: "doc",
+        label: "WHY and DR-OPTION comments",
+        detail: "Every generated resource includes a # WHY comment explaining the design choice and a # DR-OPTION comment describing the disaster recovery trade-off for that tier.",
+      },
+      {
+        icon: "compliance",
+        label: "Instance sizing per tier",
+        detail: "Small uses t3.micro/burstable instances, Mid uses m5.large with Multi-AZ, High uses c5.2xlarge with active-active replication and auto-scaling groups.",
+      },
+    ],
+  },
+  {
+    version: "1.6.0",
+    date: "2026-06-07",
+    badge: null,
     title: "Terraform File Review & Improvement",
     summary: "Upload your existing .tf files — TerraSketch audits them for security, cost, and best practices, then returns a fully improved version of every file.",
     highlights: [
@@ -30,7 +112,7 @@ export const RELEASES = [
   },
   {
     version: "1.5.0",
-    date: "2025-06-07",
+    date: "2026-06-07",
     badge: "new",
     title: "Dashboard Results & Code Explainer",
     summary: "Complete redesign of the Result page as a metrics dashboard, plus detailed plain-English explanations for every Terraform resource.",
@@ -189,4 +271,4 @@ export const RELEASES = [
   },
 ];
 
-export const CURRENT_VERSION = "1.6.0";
+export const CURRENT_VERSION = "1.9.0";
