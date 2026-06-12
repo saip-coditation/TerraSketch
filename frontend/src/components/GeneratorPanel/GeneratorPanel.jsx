@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import ProviderSelector from "./ProviderSelector.jsx";
 import UploadZone from "./UploadZone.jsx";
+import ImportZone from "./ImportZone.jsx";
 import Button from "../shared/Button.jsx";
 import LoadingSpinner from "../shared/LoadingSpinner.jsx";
 import { useVoiceToText } from "../../hooks/useVoiceToText.js";
@@ -14,6 +15,7 @@ const ENVIRONMENTS = [
 const TABS = [
   { id: "image", label: "Upload Diagram" },
   { id: "text", label: "Describe in Text" },
+  { id: "drawio", label: "Import File" },
 ];
 
 const PRESETS = [
@@ -54,6 +56,7 @@ export default function GeneratorPanel({ onSubmit, loading, prefill = null }) {
   const [tab, setTab] = useState(prefill?.inputType === "text" || prefill?.text ? "text" : "image");
   const [file, setFile] = useState(null);
   const [text, setText] = useState(prefill?.text || "");
+  const [importData, setImportData] = useState(null); // parsed draw.io / excalidraw result
   const [correctionNote, setCorrectionNote] = useState("");
   const [compareGenerationId, setCompareGenerationId] = useState(() =>
     typeof sessionStorage !== "undefined"
@@ -72,10 +75,18 @@ export default function GeneratorPanel({ onSubmit, loading, prefill = null }) {
     }
   }, [tab, voice.stop, voice.setHint]);
 
+  // Auto-select provider when draw.io/excalidraw detects one
+  const handleImportParsed = (parsed) => {
+    setImportData(parsed);
+    if (parsed?.provider) setProvider(parsed.provider);
+  };
+
   const isImageOnlyFile = file?.type?.startsWith("image/");
   const canSubmit =
     !loading &&
-    ((tab === "image" && isImageOnlyFile) || (tab === "text" && text.trim().length > 0));
+    ((tab === "image" && isImageOnlyFile) ||
+     (tab === "text" && text.trim().length > 0) ||
+     (tab === "drawio" && importData != null));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -93,15 +104,21 @@ export default function GeneratorPanel({ onSubmit, loading, prefill = null }) {
       if (tab === "image") {
         if (!file) throw new Error("Please upload a diagram first");
         if (!isImageOnlyFile) {
-          throw new Error(
-            "PDF and draw.io support is coming soon — for now, please upload a PNG/JPG screenshot of your diagram."
-          );
+          throw new Error("Please upload a PNG, JPG, WEBP, or GIF image. For .drawio or .excalidraw files use the Import File tab.");
         }
         await onSubmit({
           ...base,
           input_type: "image",
           image_base64: file.dataUrl,
           text_description: null,
+        });
+      } else if (tab === "drawio") {
+        if (!importData) throw new Error("Please import a diagram file first");
+        await onSubmit({
+          ...base,
+          input_type: "text",
+          image_base64: null,
+          text_description: importData.description,
         });
       } else {
         if (!text.trim()) throw new Error("Please describe your architecture");
@@ -212,7 +229,7 @@ export default function GeneratorPanel({ onSubmit, loading, prefill = null }) {
             <button
               key={t.id}
               type="button"
-              onClick={() => setTab(t.id)}
+              onClick={() => { setTab(t.id); setError(null); }}
               className={`min-h-[44px] flex-1 rounded-lg px-2 py-2 text-center text-xs font-medium leading-snug transition sm:min-h-0 sm:px-3 sm:py-1.5 sm:text-sm ${
                 tab === t.id ? "bg-white/10 text-white" : "text-slate-300 hover:text-white"
               }`}
@@ -222,7 +239,12 @@ export default function GeneratorPanel({ onSubmit, loading, prefill = null }) {
           ))}
         </div>
 
-        {tab === "image" ? (
+        {tab === "drawio" ? (
+          <ImportZone
+            onParsed={handleImportParsed}
+            onError={(msg) => setError(msg || null)}
+          />
+        ) : tab === "image" ? (
           <UploadZone
             value={file}
             onChange={setFile}

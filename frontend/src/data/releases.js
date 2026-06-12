@@ -1,5 +1,34 @@
 export const RELEASES = [
   {
+    version: "2.0.0",
+    date: "2026-06-12",
+    badge: "new",
+    title: "Draw.io & Excalidraw Import",
+    summary: "Import your existing .drawio, .xml, or .excalidraw diagram files directly. TerraSketch parses cloud service shapes and connections client-side and generates Terraform from the extracted architecture — no re-drawing needed.",
+    highlights: [
+      {
+        icon: "generate",
+        label: "Draw.io file import",
+        detail: "Upload a .drawio or .xml file exported from draw.io. TerraSketch reads every AWS, Azure, and GCP shape icon and connection arrow, then generates accurate Terraform reflecting your exact topology.",
+      },
+      {
+        icon: "diagram",
+        label: "Excalidraw import",
+        detail: "Import .excalidraw files. Shape labels are extracted and connections (arrows) are mapped to Terraform dependencies. Cloud provider is auto-detected from your labels.",
+      },
+      {
+        icon: "shield",
+        label: "Auto provider detection",
+        detail: "The parser reads draw.io shape styles (mxgraph.aws4.*, mxgraph.azure.*, mxgraph.gcp2.*) and auto-selects the matching cloud provider — no manual selection needed.",
+      },
+      {
+        icon: "dashboard",
+        label: "Parsed preview before generating",
+        detail: "After import you see a card with detected provider badge, component count, connection count, and a full chip list of every service found — so you know exactly what the AI will receive before clicking Generate.",
+      },
+    ],
+  },
+  {
     version: "1.9.0",
     date: "2026-06-11",
     badge: "new",
@@ -271,4 +300,4 @@ export const RELEASES = [
   },
 ];
 
-export const CURRENT_VERSION = "1.9.0";
+export const CURRENT_VERSION = "2.0.0";
