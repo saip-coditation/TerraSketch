@@ -146,8 +146,55 @@ export default function SignIn() {
   }
 
   return (
-    <main className="container-page min-w-0 py-8 sm:py-14">
-      <div className="mx-auto min-w-0 max-w-md">
+    <main className="relative min-w-0 overflow-hidden">
+      {/* Decorative background — orbs + subtle grid */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+        <div className="absolute -left-32 top-0 h-80 w-80 rounded-full bg-brand-500/20 blur-3xl" />
+        <div className="absolute -right-24 bottom-0 h-96 w-96 rounded-full bg-accent-500/20 blur-3xl" />
+        <div className="absolute left-1/2 top-1/3 h-72 w-72 -translate-x-1/2 rounded-full bg-brand-400/10 blur-3xl" />
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.045)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.045)_1px,transparent_1px)] bg-[size:44px_44px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_75%)]" />
+      </div>
+
+      <div className="container-page grid min-w-0 items-center gap-10 py-10 sm:py-14 lg:grid-cols-2 lg:gap-16 lg:py-24">
+        {/* Branding panel — large screens only */}
+        <section className="hidden min-w-0 lg:block">
+          <span className="inline-flex items-center gap-2.5 font-display text-xl font-semibold tracking-tight text-white">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-accent-500 text-white shadow-glow ring-1 ring-white/10">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path d="M4 17 10 7l4 7 6-9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
+            Terra<span className="-ml-1 text-brand-300">Sketch</span>
+          </span>
+          <h2 className="heading-display mt-8 text-4xl leading-tight text-white">
+            From diagram to
+            <br />
+            production Terraform.
+          </h2>
+          <p className="mt-4 max-w-md text-base leading-relaxed text-slate-400">
+            Sign in to keep every generation in one place — synced to your email, ready to revisit,
+            refine, and ship.
+          </p>
+          <ul className="mt-8 space-y-4">
+            {[
+              "Your generation history, synced across devices",
+              "Pick up past architectures in one click",
+              "Private by default — your email is never sold",
+            ].map((feat) => (
+              <li key={feat} className="flex items-start gap-3 text-sm text-slate-300">
+                <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-brand-500/15 text-brand-300 ring-1 ring-brand-400/30">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
+                </span>
+                {feat}
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        {/* Form column */}
+        <div className="mx-auto w-full min-w-0 max-w-md">
         <header className="mb-6">
           <h1 className="heading-display text-2xl text-white sm:text-3xl">Account</h1>
           <p className="mt-2 text-sm text-slate-400">
@@ -276,6 +323,7 @@ export default function SignIn() {
             Back home
           </Link>
         </p>
+        </div>
       </div>
     </main>
   );

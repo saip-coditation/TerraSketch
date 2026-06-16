@@ -80,7 +80,7 @@ export default function Navbar() {
           </span>
         </Link>
 
-        <nav className="hidden items-center gap-1 md:flex">
+        <nav className="hidden items-center gap-1 lg:flex">
           {links.map((l) => (
             <NavLink key={l.to} to={l.to} className={({ isActive }) => `tab ${isActive ? "tab-active" : ""}`}>
               {l.label}
@@ -120,7 +120,7 @@ export default function Navbar() {
           </Link>
         </nav>
 
-        <div className="flex items-center gap-2 md:hidden">
+        <div className="flex items-center gap-2 lg:hidden">
           <ThemeToggle />
           <Link
             to="/generate"
@@ -153,7 +153,7 @@ export default function Navbar() {
       {menuOpen && (
         <div
           id="mobile-nav"
-          className="safe-bottom border-t border-white/10 bg-ink-950/98 px-3 py-3 shadow-[0_12px_40px_rgba(0,0,0,0.45)] md:hidden"
+          className="safe-bottom border-t border-white/10 bg-ink-950/98 px-3 py-3 shadow-[0_12px_40px_rgba(0,0,0,0.45)] lg:hidden"
         >
           <nav className="flex flex-col gap-1">
             {links.map((l) => (

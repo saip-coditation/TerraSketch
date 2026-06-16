@@ -13,6 +13,12 @@ function formatDate(iso) {
 
 const PROVIDER_LABEL = { aws: "AWS", azure: "Azure", gcp: "GCP" };
 
+const PROVIDER_GRADIENT = {
+  aws: "from-amber-500/80 to-orange-600/80",
+  azure: "from-sky-500/80 to-blue-600/80",
+  gcp: "from-emerald-500/80 to-teal-600/80",
+};
+
 export default function History() {
   const { user, ready } = useAuth();
   const [items, setItems] = useState([]);
@@ -77,39 +83,89 @@ export default function History() {
           </Link>
         </div>
       ) : (
-        <ul className="grid gap-3">
-          {items.map((it) => (
-            <li key={it.generation_id}>
-              <Link
-                to={`/result/${it.generation_id}`}
-                className="card flex min-w-0 flex-col gap-3 p-4 transition hover:border-brand-300/30 hover:bg-white/[0.07] sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge tone="network">
-                      {PROVIDER_LABEL[it.cloud_provider] || it.cloud_provider}
-                    </Badge>
-                    <Badge>{it.environment}</Badge>
-                    <Badge>{it.input_type}</Badge>
-                    {typeof it.diagram_match_percent === "number" && (
-                      <Badge tone="storage">{it.diagram_match_percent}% match</Badge>
+        <ul className="grid gap-3 sm:grid-cols-2">
+          {items.map((it) => {
+            const resources = it.resources_identified || [];
+            const provider = it.cloud_provider;
+            return (
+              <li key={it.generation_id}>
+                <Link
+                  to={`/result/${it.generation_id}`}
+                  className="card group flex h-full min-w-0 flex-col gap-4 p-5 transition hover:-translate-y-0.5 hover:border-brand-300/40 hover:bg-white/[0.08] hover:shadow-glow"
+                >
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span
+                      className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br ${
+                        PROVIDER_GRADIENT[provider] || "from-slate-500/80 to-slate-700/80"
+                      } text-sm font-bold text-white shadow-glow ring-1 ring-white/10`}
+                    >
+                      {(PROVIDER_LABEL[provider] || provider || "?").slice(0, 3)}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge>{it.environment}</Badge>
+                        <Badge>{it.input_type}</Badge>
+                        {typeof it.diagram_match_percent === "number" && (
+                          <Badge tone="storage">{it.diagram_match_percent}% match</Badge>
+                        )}
+                      </div>
+                      <p className="mt-1.5 text-xs text-slate-500">{formatDate(it.created_at)}</p>
+                    </div>
+                    <svg
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="mt-1 shrink-0 text-slate-600 transition group-hover:translate-x-0.5 group-hover:text-brand-300"
+                      aria-hidden
+                    >
+                      <path d="M5 12h14M13 6l6 6-6 6" />
+                    </svg>
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                      {resources.length
+                        ? `${resources.length} resource${resources.length === 1 ? "" : "s"}`
+                        : "Resources"}
+                    </p>
+                    {resources.length ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {resources.slice(0, 5).map((r, i) => (
+                          <span
+                            key={`${r}-${i}`}
+                            className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-xs text-slate-300"
+                          >
+                            {r}
+                          </span>
+                        ))}
+                        {resources.length > 5 && (
+                          <span className="rounded-md px-2 py-0.5 text-xs text-slate-500">
+                            +{resources.length - 5} more
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-sm text-slate-500">No resources extracted</p>
                     )}
                   </div>
-                  <p className="mt-2 truncate text-sm text-slate-300">
-                    {(it.resources_identified || []).slice(0, 6).join(" · ") ||
-                      "No resources extracted"}
-                    {(it.resources_identified || []).length > 6 && " …"}
-                  </p>
-                </div>
-                <div className="text-right text-xs text-slate-400">
-                  <p>{formatDate(it.created_at)}</p>
-                  <p className="font-mono text-[11px] text-slate-500">
-                    {it.generation_id.slice(0, 8)}
-                  </p>
-                </div>
-              </Link>
-            </li>
-          ))}
+
+                  <div className="flex items-center justify-between border-t border-white/[0.06] pt-3 text-xs text-slate-500">
+                    <span className="font-mono text-[11px]">
+                      #{it.generation_id.slice(0, 8)}
+                    </span>
+                    <span className="font-medium text-brand-300/80 transition group-hover:text-brand-200">
+                      View result
+                    </span>
+                  </div>
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       )}
     </main>
