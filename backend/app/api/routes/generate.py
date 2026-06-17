@@ -4,14 +4,11 @@ Refactored into a GenerationPipeline with composable stages (§1 P1).
 Route is now async (§1 P2) using AsyncAnthropic + tool-use (§3 P1).
 """
 
-import json
 import logging
 from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.encoders import jsonable_encoder
-from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_optional_user
@@ -20,7 +17,6 @@ from app.core.limiter import limiter
 from app.db import models
 from app.db.schemas import ClaudeOutput, GenerateRequest, GenerateResponse
 from app.services.llm.router import LLMServiceError, generate_terraform
-from app.services.llm.claude import ClaudeServiceError, stream_generate_terraform
 from app.services.quality.diagram_match import (
     analyze_diagram_match,
     improvement_advice_for_canonical_baseline,
@@ -427,108 +423,6 @@ async def post_generate(
         created_at=datetime.utcnow(),
     )
     return _response_from_record(dummy, rid)
-
-
-@router.post(
-    "/generate/stream",
-    summary="Stream Terraform generation with live thinking (SSE)",
-)
-@limiter.limit(get_settings().RATE_LIMIT_GENERATE)
-async def post_generate_stream(
-    request: Request,
-    payload: GenerateRequest,
-    db: Session = Depends(get_db),
-    current_user: models.User | None = Depends(get_optional_user),
-) -> StreamingResponse:
-    """Server-Sent Events: streams `thinking` and `output` deltas while the model
-    works, then a final `done` event carrying the persisted generation.
-
-    Anthropic-only. If streaming is unavailable the client should fall back to
-    POST /api/generate (this route returns 501 before streaming in that case).
-    """
-    try:
-        payload.ensure_input_consistency()
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    if not get_settings().ANTHROPIC_API_KEY:
-        raise HTTPException(status_code=501, detail="Streaming requires ANTHROPIC_API_KEY.")
-
-    hints_text = build_generation_hints(
-        architecture_preset=payload.architecture_preset,
-        correction_note=payload.correction_note,
-    )
-    rid = getattr(request.state, "request_id", None)
-
-    def _sse(obj: dict[str, Any]) -> str:
-        return f"data: {json.dumps(obj)}\n\n"
-
-    async def event_stream():
-        ai_output: ClaudeOutput | None = None
-        try:
-            async for ev in stream_generate_terraform(
-                cloud_provider=payload.cloud_provider,
-                environment=payload.environment,
-                input_type=payload.input_type,
-                text_description=payload.text_description,
-                image_base64=payload.image_base64,
-                generation_hints=hints_text or None,
-                scale_tier=payload.scale_tier,
-            ):
-                if ev["type"] in ("thinking", "output"):
-                    yield _sse(ev)
-                elif ev["type"] == "result":
-                    ai_output = ev["output"]
-
-            if ai_output is None:
-                yield _sse({"type": "error", "message": "No result produced."})
-                return
-
-            result = GenerationPipeline.run(
-                ai_output=ai_output,
-                cloud_provider=payload.cloud_provider,
-                environment=payload.environment,
-                session_id=payload.session_id,
-                compare_row=None,
-            )
-
-            record = models.Generation(
-                session_id=payload.session_id,
-                user_id=current_user.id if current_user else None,
-                cloud_provider=payload.cloud_provider,
-                environment=payload.environment,
-                input_type=payload.input_type,
-                input_description=payload.text_description,
-                resources_identified=result.resources_identified,
-                assumptions=result.assumptions,
-                generated_files=result.files,
-                usage_instructions=result.usage_instructions,
-                diagram_match_percent=result.match_percent,
-                improvement_advice=result.improvement_advice,
-                security_warnings=result.security_warnings,
-                terraform_validation=result.terraform_validation,
-                file_diff_summary=result.file_diff_summary,
-                confidence_scores=result.confidence_scores,
-                placeholders=result.placeholders,
-            )
-            db.add(record)
-            db.commit()
-            db.refresh(record)
-
-            resp = _response_from_record(record, rid)
-            yield _sse({"type": "done", "result": jsonable_encoder(resp)})
-        except ClaudeServiceError as exc:
-            logger.warning("Streaming generation failed: %s", exc)
-            yield _sse({"type": "error", "message": str(exc)})
-        except Exception as exc:  # noqa: BLE001 — surface as a stream error, client falls back
-            logger.exception("Unexpected streaming generation error")
-            yield _sse({"type": "error", "message": f"Unexpected error: {exc}"})
-
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
 
 
 @router.get(

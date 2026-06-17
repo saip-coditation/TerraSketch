@@ -78,63 +78,6 @@ export async function generateTerraformV2(payload) {
   return data;
 }
 
-/**
- * Stream a generation over SSE, surfacing the model's live "thinking" and the
- * Terraform config as it's written. Resolves with the final generation result
- * (same shape as generateTerraform). Throws if streaming is unavailable so the
- * caller can fall back to the non-streaming endpoint.
- */
-export async function generateTerraformStream(payload, handlers = {}) {
-  const token = getStoredToken();
-  const res = await fetch(`${baseURL}/api/generate/stream`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!res.ok || !res.body) {
-    const err = new Error(`Streaming unavailable (HTTP ${res.status})`);
-    err.status = res.status;
-    throw err;
-  }
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let result = null;
-  let errorMsg = null;
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-
-    const frames = buffer.split("\n\n");
-    buffer = frames.pop() ?? "";
-    for (const frame of frames) {
-      const dataLine = frame.split("\n").find((l) => l.startsWith("data:"));
-      if (!dataLine) continue;
-      let evt;
-      try {
-        evt = JSON.parse(dataLine.slice(5).trim());
-      } catch {
-        continue;
-      }
-      if (evt.type === "thinking") handlers.onThinking?.(evt.text);
-      else if (evt.type === "output") handlers.onOutput?.(evt.text);
-      else if (evt.type === "done") result = evt.result;
-      else if (evt.type === "error") errorMsg = evt.message;
-    }
-  }
-
-  if (errorMsg) throw new Error(errorMsg);
-  if (!result) throw new Error("Stream ended without a result");
-  return result;
-}
-
 export async function editGenerationIR(generationId, ir) {
   const { data } = await api.post(`/api/v2/generation/${generationId}/ir/edit`, ir);
   return data;
