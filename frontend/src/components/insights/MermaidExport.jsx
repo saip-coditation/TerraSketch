@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import mermaid from "mermaid";
+import { parseResources, parseEdges } from "../../utils/hclParse.js";
 
 mermaid.initialize({
   startOnLoad: false,
@@ -72,6 +73,67 @@ function detectGroup(name) {
     if (keywords.some((k) => lower.includes(k))) return group;
   }
   return "other";
+}
+
+// Group a Terraform resource *type* (e.g. aws_db_instance) into a layer.
+function groupForType(type) {
+  const t = type.toLowerCase();
+  if (/vpc|subnet|_gateway|route|_network|firewall|security_group|nat|peering|vpn/.test(t)) return "network";
+  if (/cloudfront|cdn|_lb\b|alb|nlb|load_balanc|api_gateway|apigateway|application_gateway|api_management|waf/.test(t)) return "frontend";
+  if (/instance|ecs|eks|gke|aks|lambda|function|container|cloud_run|app_service|kubernetes|node_group|node_pool|autoscaling|compute_instance|virtual_machine/.test(t)) return "compute";
+  if (/_db|rds|aurora|dynamodb|s3_bucket|storage|bucket|elasticache|redis|cosmos|sql|spanner|bigtable|bigquery|opensearch|elasticsearch|memorystore/.test(t)) return "data";
+  if (/sqs|sns|queue|topic|kinesis|event|pubsub|servicebus|service_bus|msk|kafka/.test(t)) return "messaging";
+  if (/iam|kms|secret|key_vault|acm|certificate|vault/.test(t)) return "security";
+  return "other";
+}
+
+// Build the diagram from the ACTUAL Terraform code: nodes are real resource
+// blocks, edges are real interpolation references between them.
+function buildMermaidFromBlocks(blocks, edges) {
+  if (!blocks.length) return "";
+
+  const nodes = blocks.map((b) => ({
+    id: safeId(b.address),
+    label: b.name,
+    type: b.type,
+    group: groupForType(b.type),
+  }));
+
+  const seen = new Set();
+  const unique = nodes.filter((n) => (seen.has(n.id) ? false : (seen.add(n.id), true)));
+  const ids = new Set(unique.map((n) => n.id));
+
+  const lines = ["graph TD"];
+
+  const byGroup = {};
+  for (const n of unique) (byGroup[n.group] = byGroup[n.group] || []).push(n);
+
+  for (const [group, gnodes] of Object.entries(byGroup)) {
+    const groupLabel = group.charAt(0).toUpperCase() + group.slice(1);
+    if (gnodes.length > 1) {
+      lines.push(`  subgraph ${group}["${groupLabel}"]`);
+      for (const n of gnodes) lines.push(`    ${n.id}["${n.label}<br/><small>${n.type}</small>"]`);
+      lines.push("  end");
+    } else {
+      lines.push(`  ${gnodes[0].id}["${gnodes[0].label}<br/><small>${gnodes[0].type}</small>"]`);
+    }
+  }
+
+  const added = new Set();
+  for (const e of edges) {
+    const from = safeId(e.from);
+    const to = safeId(e.to);
+    const key = `${from}-->${to}`;
+    if (from === to || !ids.has(from) || !ids.has(to) || added.has(key)) continue;
+    added.add(key);
+    lines.push(`  ${from} --> ${to}`);
+  }
+
+  for (const n of unique) {
+    lines.push(`  style ${n.id} ${GROUP_STYLES[n.group] || GROUP_STYLES.other}`);
+  }
+
+  return lines.join("\n");
 }
 
 function safeId(name) {
@@ -192,14 +254,20 @@ function MermaidDiagram({ diagram }) {
   );
 }
 
-export default function MermaidExport({ resources = [] }) {
+export default function MermaidExport({ resources = [], files = null }) {
   const [open, setOpen] = useState(false);
   const [showCode, setShowCode] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const diagram = useMemo(() => buildMermaid(resources), [resources]);
+  const { diagram, fromCode } = useMemo(() => {
+    const blocks = files ? parseResources(files) : [];
+    if (blocks.length) {
+      return { diagram: buildMermaidFromBlocks(blocks, parseEdges(blocks)), fromCode: true };
+    }
+    return { diagram: buildMermaid(resources), fromCode: false };
+  }, [resources, files]);
 
-  if (resources.length === 0) return null;
+  if (!diagram) return null;
 
   const copy = async () => {
     try { await navigator.clipboard.writeText(diagram); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch {}
@@ -225,8 +293,17 @@ export default function MermaidExport({ resources = [] }) {
             </svg>
           </span>
           <div>
-            <p className="text-sm font-semibold text-slate-100">Architecture Diagram</p>
-            <p className="text-xs text-slate-400">Visual Mermaid graph</p>
+            <p className="flex items-center gap-2 text-sm font-semibold text-slate-100">
+              Architecture Diagram
+              {fromCode && (
+                <span className="rounded-full border border-violet-400/30 bg-violet-400/10 px-1.5 py-0 text-[10px] font-medium text-violet-300">
+                  from code
+                </span>
+              )}
+            </p>
+            <p className="text-xs text-slate-400">
+              {fromCode ? "Mapped from your Terraform" : "Visual Mermaid graph"}
+            </p>
           </div>
         </div>
         <span className="text-slate-500 text-lg">{open ? "−" : "+"}</span>

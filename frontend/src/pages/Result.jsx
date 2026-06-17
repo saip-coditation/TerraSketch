@@ -9,7 +9,7 @@ import InsightsDeck from "../components/insights/InsightsDeck.jsx";
 import FileDiffSummary from "../components/insights/FileDiffSummary.jsx";
 import ShareAndGitCard from "../components/insights/ShareAndGitCard.jsx";
 import { getApiBaseUrl, getGeneration, postFeedback } from "../services/api.js";
-import CostEstimator from "../components/insights/CostEstimator.jsx";
+import CostBreakdown from "../components/insights/CostBreakdown.jsx";
 import CostOptimizer from "../components/insights/CostOptimizer.jsx";
 import MermaidExport from "../components/insights/MermaidExport.jsx";
 import SecurityScorePanel from "../components/insights/SecurityScorePanel.jsx";
@@ -430,7 +430,7 @@ export default function Result() {
       </header>
 
       {/* ── Dashboard KPI stat cards ─────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div data-tour="result-kpis" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {/* Match Score */}
         <StatCard
           label="Match Score"
@@ -539,7 +539,7 @@ export default function Result() {
       <div className="grid min-w-0 gap-6 lg:gap-8 xl:grid-cols-[minmax(0,320px),minmax(0,1fr)] xl:items-start">
 
         {/* Left sidebar — tools & insights ─────────────────────────────── */}
-        <aside className="min-w-0 space-y-4 xl:sticky xl:top-20 xl:self-start">
+        <aside data-tour="result-tools" className="min-w-0 space-y-4 xl:sticky xl:top-20 xl:self-start">
 
           {/* Match Score Ring */}
           <MatchScoreWidget percent={data.diagram_match_percent ?? 0} />
@@ -563,7 +563,8 @@ export default function Result() {
           />
 
           {/* Cost */}
-          <CostEstimator
+          <CostBreakdown
+            files={data.files || {}}
             resources={data.resources_identified || []}
             cloudProvider={data.cloud_provider}
           />
@@ -581,7 +582,7 @@ export default function Result() {
           <TfvarsGenerator files={data.files || {}} />
 
           {/* Architecture diagram */}
-          <MermaidExport resources={data.resources_identified || []} />
+          <MermaidExport resources={data.resources_identified || []} files={data.files || {}} />
 
           {/* File diff */}
           <FileDiffSummary summary={data.file_diff_summary} />
@@ -614,7 +615,7 @@ export default function Result() {
           />
 
           {/* Terraform code */}
-          <section>
+          <section data-tour="result-code">
             <SectionHeader
               icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>}
               title="Terraform Output"

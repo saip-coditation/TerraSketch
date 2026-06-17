@@ -13,7 +13,7 @@ import base64
 import logging
 import re
 from io import BytesIO
-from typing import Any
+from typing import Any, AsyncIterator
 
 from anthropic import AsyncAnthropic
 from PIL import Image
@@ -225,3 +225,118 @@ async def generate_terraform(
         files=files,
         usage_instructions=tool_input.get("usage_instructions"),
     )
+
+
+def _claude_output_from_message(response: Any, cloud_provider: str) -> ClaudeOutput:
+    """Extract the forced-tool result from a (streamed or non-streamed) message."""
+    tool_input: dict[str, Any] | None = None
+    for block in response.content or []:
+        if (
+            getattr(block, "type", None) == "tool_use"
+            and getattr(block, "name", None) == "submit_terraform_v1"
+        ):
+            tool_input = dict(getattr(block, "input", {}) or {})
+            break
+
+    if tool_input is None:
+        raise ClaudeServiceError("Claude did not call the required tool 'submit_terraform_v1'.")
+
+    files_raw = tool_input.get("files") or {}
+    files = {
+        "main.tf": files_raw.get("main_tf", ""),
+        "variables.tf": files_raw.get("variables_tf", ""),
+        "outputs.tf": files_raw.get("outputs_tf", ""),
+        "providers.tf": files_raw.get("providers_tf", ""),
+    }
+    missing = [k for k, v in files.items() if not v.strip()]
+    if missing:
+        raise ClaudeServiceError(f"Claude returned empty Terraform files: {missing}")
+
+    return ClaudeOutput(
+        provider=tool_input.get("provider", cloud_provider),
+        assumptions=list(tool_input.get("assumptions") or []),
+        resources_identified=list(tool_input.get("resources_identified") or []),
+        files=files,
+        usage_instructions=tool_input.get("usage_instructions"),
+    )
+
+
+async def stream_generate_terraform(
+    *,
+    cloud_provider: str,
+    environment: str,
+    input_type: str,
+    text_description: str | None = None,
+    image_base64: str | None = None,
+    generation_hints: str | None = None,
+    scale_tier: str = "small",
+) -> AsyncIterator[dict[str, Any]]:
+    """Stream Claude's extended-thinking + tool-input deltas, then the final output.
+
+    Yields dicts:
+      {"type": "thinking", "text": ...}   incremental reasoning
+      {"type": "output",   "text": ...}   incremental tool-input (the Terraform JSON)
+      {"type": "result",   "output": ClaudeOutput}  the assembled, validated result
+
+    Uses tool_choice="auto" (extended thinking is incompatible with a forced
+    tool choice) and relies on the single-tool instruction to elicit the call.
+    """
+    settings = get_settings()
+    if not settings.ANTHROPIC_API_KEY:
+        raise ClaudeServiceError("ANTHROPIC_API_KEY is not configured.")
+
+    client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+    content = _build_user_content(
+        cloud_provider=cloud_provider,
+        environment=environment,
+        input_type=input_type,
+        text_description=text_description,
+        image_base64=image_base64,
+        generation_hints=generation_hints,
+        scale_tier=scale_tier,
+    )
+    system_prompt = build_system_prompt(cloud_provider=cloud_provider)
+    system = [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}]
+
+    create_kwargs: dict[str, Any] = dict(
+        model=settings.ANTHROPIC_MODEL,
+        max_tokens=settings.ANTHROPIC_MAX_TOKENS,
+        system=system,
+        tools=[_SUBMIT_V1_TERRAFORM],
+        # Extended thinking requires a non-forced tool choice.
+        tool_choice={"type": "auto"},
+        thinking={"type": "enabled", "budget_tokens": settings.ANTHROPIC_THINKING_BUDGET_TOKENS},
+        messages=[{"role": "user", "content": content}],
+    )
+
+    logger.info(
+        "Streaming Claude v1 (model=%s, provider=%s, env=%s, input=%s)",
+        settings.ANTHROPIC_MODEL,
+        cloud_provider,
+        environment,
+        input_type,
+    )
+
+    try:
+        async with client.messages.stream(**create_kwargs) as stream:
+            async for event in stream:
+                if getattr(event, "type", None) != "content_block_delta":
+                    continue
+                delta = getattr(event, "delta", None)
+                dtype = getattr(delta, "type", None)
+                if dtype == "thinking_delta":
+                    text = getattr(delta, "thinking", "")
+                    if text:
+                        yield {"type": "thinking", "text": text}
+                elif dtype == "input_json_delta":
+                    text = getattr(delta, "partial_json", "")
+                    if text:
+                        yield {"type": "output", "text": text}
+            response = await stream.get_final_message()
+    except ClaudeServiceError:
+        raise
+    except Exception as exc:
+        logger.exception("Claude streaming call failed")
+        raise ClaudeServiceError(f"Claude streaming call failed: {exc}") from exc
+
+    yield {"type": "result", "output": _claude_output_from_message(response, cloud_provider)}

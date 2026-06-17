@@ -2,12 +2,15 @@ import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import GeneratorPanel from "../components/GeneratorPanel/GeneratorPanel.jsx";
 import GenerationProgress from "../components/GenerationProgress.jsx";
-import { generateTerraform } from "../services/api.js";
+import ThinkingStream from "../components/ThinkingStream.jsx";
+import { generateTerraform, generateTerraformStream } from "../services/api.js";
 import { getSessionId } from "../utils/sessionId.js";
 
 export default function Generate() {
   const [loading, setLoading] = useState(false);
   const [globalError, setGlobalError] = useState(null);
+  const [thinking, setThinking] = useState("");
+  const [output, setOutput] = useState("");
   const navigate = useNavigate();
   const location = useLocation();
   const prefill = location.state?.prefill || null;
@@ -15,11 +18,22 @@ export default function Generate() {
   const handleSubmit = async (payload) => {
     setLoading(true);
     setGlobalError(null);
+    setThinking("");
+    setOutput("");
+    const full = { ...payload, session_id: getSessionId() };
     try {
-      const result = await generateTerraform({
-        ...payload,
-        session_id: getSessionId(),
-      });
+      let result;
+      try {
+        // Preferred path: live streaming with the Thinking tab.
+        result = await generateTerraformStream(full, {
+          onThinking: (t) => setThinking((prev) => prev + t),
+          onOutput: (t) => setOutput((prev) => prev + t),
+        });
+      } catch (streamErr) {
+        // Streaming unavailable (older backend, non-Anthropic provider, etc.) →
+        // fall back to the standard non-streaming endpoint.
+        result = await generateTerraform(full);
+      }
       try {
         sessionStorage.setItem("terrasketch_last_generation_id", result.generation_id);
       } catch {
@@ -46,9 +60,13 @@ export default function Generate() {
           </p>
         </header>
 
-        <GeneratorPanel onSubmit={handleSubmit} loading={loading} prefill={prefill} />
+        <div data-tour="generator-panel">
+          <GeneratorPanel onSubmit={handleSubmit} loading={loading} prefill={prefill} />
+        </div>
 
         <GenerationProgress loading={loading} />
+
+        <ThinkingStream thinking={thinking} output={output} active={loading} />
 
         {globalError && (
           <div

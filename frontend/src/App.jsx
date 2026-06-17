@@ -14,6 +14,7 @@ import Templates from "./pages/Templates.jsx";
 import Library from "./pages/Library.jsx";
 import Releases from "./pages/Releases.jsx";
 import Review from "./pages/Review.jsx";
+import TourGuide from "./components/TourGuide.jsx";
 
 export default function App() {
   return (
@@ -36,6 +37,7 @@ export default function App() {
         </Routes>
       </div>
       <Footer />
+      <TourGuide />
     </div>
   );
 }

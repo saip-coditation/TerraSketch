@@ -59,7 +59,7 @@ export default function History() {
               : "Your last 10 generations on this device (sign in to sync by email)."}
           </p>
         </div>
-        <Link to="/generate" className="btn-primary w-full justify-center py-3.5 sm:w-auto sm:py-2">
+        <Link to="/generate" data-tour="history-new" className="btn-primary w-full justify-center py-3.5 sm:w-auto sm:py-2">
           New generation
         </Link>
       </header>
