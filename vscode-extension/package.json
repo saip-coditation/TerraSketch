@@ -1,0 +1,70 @@
+{
+  "name": "terrasketch",
+  "displayName": "TerraSketch",
+  "description": "Generate first-draft Terraform from a description and review existing Terraform — powered by TerraSketch.",
+  "version": "0.1.0",
+  "publisher": "terrasketch",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["Other", "Machine Learning"],
+  "keywords": ["terraform", "iac", "aws", "azure", "gcp", "ai"],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onCommand:terrasketch.generate",
+    "onCommand:terrasketch.review"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "terrasketch.generate",
+        "title": "TerraSketch: Generate Terraform from a description"
+      },
+      {
+        "command": "terrasketch.review",
+        "title": "TerraSketch: Review Terraform in this workspace"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "terrasketch.review",
+          "when": "resourceExtname == .tf",
+          "group": "terrasketch"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "TerraSketch",
+      "properties": {
+        "terrasketch.apiUrl": {
+          "type": "string",
+          "default": "https://terrasketch.onrender.com",
+          "description": "Base URL of the TerraSketch API. Point at your own deploy or http://localhost:8000."
+        },
+        "terrasketch.token": {
+          "type": "string",
+          "default": "",
+          "description": "Optional bearer token to attach generations to a TerraSketch account."
+        },
+        "terrasketch.defaultProvider": {
+          "type": "string",
+          "enum": ["aws", "azure", "gcp"],
+          "default": "aws",
+          "description": "Default cloud provider for generation."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.5.0"
+  }
+}
