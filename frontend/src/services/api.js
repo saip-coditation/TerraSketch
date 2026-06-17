@@ -27,6 +27,11 @@ export const api = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
+// Generation/review hit the LLM and (on a cold free-tier instance) terraform
+// init, so they can take several minutes — give them a longer ceiling than the
+// default 5-minute client timeout.
+const LLM_TIMEOUT_MS = 600_000;
+
 api.interceptors.request.use((config) => {
   const t = getStoredToken();
   if (t) {
@@ -60,6 +65,12 @@ api.interceptors.response.use(
     if (status === 429) {
       detail =
         "Too many requests. Wait a minute and try again (or raise RATE_LIMIT_GENERATE on the server).";
+    } else if (status === 502 || status === 503 || status === 504) {
+      detail =
+        "The TerraSketch server is waking up or under heavy load and didn't respond in time. Wait ~30 seconds and try again. If this keeps happening, the free-tier instance is likely out of memory — upgrading the hosting plan fixes it.";
+    } else if (error.code === "ECONNABORTED") {
+      detail =
+        "The request took too long and timed out. The server may be cold-starting — wait a moment and try again.";
     }
     const err = new Error(detail);
     err.status = status;
@@ -68,13 +79,28 @@ api.interceptors.response.use(
   }
 );
 
+// Retry once on a gateway error (502/503) — usually a cold-starting free-tier
+// instance that wasn't reachable yet. We don't retry timeouts (the request may
+// still be processing server-side) or 504.
+async function postWithGatewayRetry(url, payload, config) {
+  try {
+    return await api.post(url, payload, config);
+  } catch (err) {
+    if (err.status === 502 || err.status === 503) {
+      await new Promise((r) => setTimeout(r, 4000));
+      return api.post(url, payload, config);
+    }
+    throw err;
+  }
+}
+
 export async function generateTerraform(payload) {
-  const { data } = await api.post("/api/generate", payload);
+  const { data } = await postWithGatewayRetry("/api/generate", payload, { timeout: LLM_TIMEOUT_MS });
   return data;
 }
 
 export async function generateTerraformV2(payload) {
-  const { data } = await api.post("/api/v2/generate", payload);
+  const { data } = await api.post("/api/v2/generate", payload, { timeout: LLM_TIMEOUT_MS });
   return data;
 }
 
@@ -162,7 +188,7 @@ export async function getHealth() {
 }
 
 export async function reviewTerraform(payload) {
-  const { data } = await api.post("/api/review", payload);
+  const { data } = await api.post("/api/review", payload, { timeout: LLM_TIMEOUT_MS });
   return data;
 }
 
