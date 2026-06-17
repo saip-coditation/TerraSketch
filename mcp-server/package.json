@@ -1,11 +1,11 @@
 {
-  "name": "terrasketch-mcp",
+  "name": "terrasketch-saip",
   "version": "0.1.0",
   "description": "MCP server for TerraSketch — generate first-draft Terraform from a description, and review existing Terraform, from any MCP client (Claude Code, Cursor, Windsurf, Claude Desktop).",
   "license": "MIT",
   "type": "module",
   "bin": {
-    "terrasketch-mcp": "dist/index.js"
+    "terrasketch-saip": "dist/index.js"
   },
   "files": [
     "dist"
@@ -13,10 +13,18 @@
   "engines": {
     "node": ">=18"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/saip-coditation/TerraSketch.git",
+    "directory": "mcp-server"
+  },
+  "homepage": "https://github.com/saip-coditation/TerraSketch/tree/main/mcp-server#readme",
+  "bugs": "https://github.com/saip-coditation/TerraSketch/issues",
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",

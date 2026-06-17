@@ -60,8 +60,8 @@ Add to the client's MCP config (`mcp.json` / `claude_desktop_config.json`):
 }
 ```
 
-Once published to npm you'll be able to replace the `command`/`args` with
-`"command": "npx", "args": ["-y", "terrasketch-mcp"]`.
+Once published to npm you can replace the `command`/`args` with
+`"command": "npx", "args": ["-y", "terrasketch-saip"]` (no clone needed).
 
 ## Try it
 
