@@ -192,6 +192,12 @@ export async function reviewTerraform(payload) {
   return data;
 }
 
+/** Live monthly cost via Infracost. Returns { available, total_monthly, items, ... }. */
+export async function getCostBreakdown(files) {
+  const { data } = await api.post("/api/cost/breakdown", { files }, { timeout: 150_000 });
+  return data;
+}
+
 export function getApiBaseUrl() {
   return baseURL.replace(/\/$/, "");
 }

@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { parseResources, readCount, readSize } from "../../utils/hclParse.js";
+import { getCostBreakdown } from "../../services/api.js";
 
 /**
  * CostBreakdown — monthly cost estimate derived from the ACTUAL generated
@@ -137,6 +138,21 @@ const CALC_URL = {
 
 export default function CostBreakdown({ files = {}, resources = [], cloudProvider = "aws" }) {
   const [open, setOpen] = useState(false);
+  const [live, setLive] = useState(null); // { available, total_monthly, items, reason }
+  const [liveState, setLiveState] = useState("idle"); // idle | loading | done
+
+  const fetchLive = async () => {
+    if (liveState === "loading") return;
+    setLiveState("loading");
+    try {
+      const data = await getCostBreakdown(files);
+      setLive(data);
+    } catch (e) {
+      setLive({ available: false, reason: e.message || "request failed" });
+    } finally {
+      setLiveState("done");
+    }
+  };
 
   const { items, total, source } = useMemo(() => {
     const blocks = parseResources(files);
@@ -226,6 +242,51 @@ export default function CostBreakdown({ files = {}, resources = [], cloudProvide
 
       {open && (
         <div className="border-t border-white/5 px-5 pb-5 pt-3">
+          {/* Live Infracost pricing (opt-in) */}
+          {live?.available ? (
+            <div className="mb-4 rounded-xl border border-emerald-400/25 bg-emerald-500/[0.07] p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-200">
+                  <span className="rounded-full bg-emerald-400/20 px-1.5 py-0 text-[10px] text-emerald-300">
+                    Infracost · live
+                  </span>
+                  Cloud-API pricing
+                </span>
+                <span className="font-mono text-sm font-bold text-emerald-300">
+                  ${live.total_monthly?.toFixed(0)}
+                  <span className="text-[10px] font-normal text-emerald-400">/mo</span>
+                </span>
+              </div>
+              {(live.items || []).slice(0, 8).map((it) => (
+                <div key={it.name} className="flex items-center justify-between gap-2 text-xs">
+                  <span className="truncate font-mono text-slate-400">{it.name}</span>
+                  <span className="shrink-0 font-mono text-slate-300">
+                    {it.monthly ? `$${it.monthly}/mo` : "—"}
+                  </span>
+                </div>
+              ))}
+              <p className="mt-2 text-[10px] text-slate-500">
+                The estimate below is a heuristic fallback.
+              </p>
+            </div>
+          ) : (
+            <div className="mb-4">
+              <button
+                type="button"
+                onClick={fetchLive}
+                disabled={liveState === "loading"}
+                className="btn-secondary w-full justify-center py-2 text-xs disabled:opacity-60"
+              >
+                {liveState === "loading" ? "Fetching live prices…" : "Get live prices (Infracost)"}
+              </button>
+              {liveState === "done" && live && !live.available && (
+                <p className="mt-1.5 text-[10px] text-slate-500">
+                  Live pricing unavailable ({live.reason || "not configured"}) — showing estimate.
+                </p>
+              )}
+            </div>
+          )}
+
           <p className="mb-3 text-[11px] text-slate-500">
             {source === "code"
               ? "Estimated from the actual resource blocks, counts and instance sizes in the generated Terraform. Excludes data transfer, storage volume and request-based charges."

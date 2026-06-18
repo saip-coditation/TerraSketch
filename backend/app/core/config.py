@@ -87,6 +87,10 @@ class Settings(BaseSettings):
     # When true, skip `terraform validate` subprocess after generation (faster local dev).
     SKIP_TERRAFORM_VALIDATE: bool = False
 
+    # Infracost — set INFRACOST_API_KEY (free at infracost.io) and install the
+    # `infracost` CLI in the image to enable live cloud-API cost breakdowns.
+    INFRACOST_API_KEY: str = ""
+
     # Resend API for feedback notifications (https://resend.com — free 3K emails/month)
     RESEND_API_KEY: str = ""
     FEEDBACK_EMAIL: str = "phapalesai25@gmail.com"

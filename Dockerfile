@@ -17,8 +17,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     APP_ENV=production
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends build-essential libpq-dev \
+ && apt-get install -y --no-install-recommends build-essential libpq-dev curl ca-certificates \
  && rm -rf /var/lib/apt/lists/*
+
+# Infracost CLI — enables live cost breakdowns when INFRACOST_API_KEY is set.
+# Optional: the app degrades gracefully to its code-grounded estimate without it.
+RUN curl -fsSL https://raw.githubusercontent.com/infracost/infracost/master/scripts/install.sh | sh
 
 WORKDIR /app
 
