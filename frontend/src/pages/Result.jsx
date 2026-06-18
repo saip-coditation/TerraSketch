@@ -10,6 +10,7 @@ import FileDiffSummary from "../components/insights/FileDiffSummary.jsx";
 import ShareAndGitCard from "../components/insights/ShareAndGitCard.jsx";
 import { getApiBaseUrl, getGeneration, postFeedback } from "../services/api.js";
 import CostBreakdown from "../components/insights/CostBreakdown.jsx";
+import RefinePanel from "../components/insights/RefinePanel.jsx";
 import CostOptimizer from "../components/insights/CostOptimizer.jsx";
 import MermaidExport from "../components/insights/MermaidExport.jsx";
 import SecurityScorePanel from "../components/insights/SecurityScorePanel.jsx";
@@ -294,7 +295,12 @@ export default function Result() {
   const [feedbackState, setFeedbackState] = useState("idle");
 
   useEffect(() => {
-    if (initial?.generation_id === id) return;
+    // Navigated here with the result already in state (e.g. after a refine) —
+    // sync it so the page reflects the new generation without a refetch.
+    if (initial?.generation_id === id) {
+      setData(initial);
+      return;
+    }
     let cancel = false;
     (async () => {
       setLoading(true);
@@ -540,6 +546,9 @@ export default function Result() {
 
         {/* Left sidebar — tools & insights ─────────────────────────────── */}
         <aside data-tour="result-tools" className="min-w-0 space-y-4 xl:sticky xl:top-20 xl:self-start">
+
+          {/* Refine / iterate */}
+          <RefinePanel data={data} />
 
           {/* Match Score Ring */}
           <MatchScoreWidget percent={data.diagram_match_percent ?? 0} />
