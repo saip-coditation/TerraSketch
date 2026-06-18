@@ -21,8 +21,9 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 # Infracost CLI — enables live cost breakdowns when INFRACOST_API_KEY is set.
-# Optional: the app degrades gracefully to its code-grounded estimate without it.
-RUN curl -fsSL https://raw.githubusercontent.com/infracost/infracost/master/scripts/install.sh | sh
+# Optional and non-fatal: if the download fails the build still succeeds, and the
+# app degrades gracefully to its code-grounded estimate.
+RUN curl -fsSL https://raw.githubusercontent.com/infracost/infracost/master/scripts/install.sh | sh || true
 
 WORKDIR /app
 
