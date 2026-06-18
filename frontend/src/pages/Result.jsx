@@ -10,7 +10,6 @@ import FileDiffSummary from "../components/insights/FileDiffSummary.jsx";
 import ShareAndGitCard from "../components/insights/ShareAndGitCard.jsx";
 import { getApiBaseUrl, getGeneration, postFeedback } from "../services/api.js";
 import CostBreakdown from "../components/insights/CostBreakdown.jsx";
-import RefinePanel from "../components/insights/RefinePanel.jsx";
 import { downloadZip } from "../utils/downloadZip.js";
 import { buildModuleFiles } from "../utils/moduleStructure.js";
 import CostOptimizer from "../components/insights/CostOptimizer.jsx";
@@ -548,9 +547,6 @@ export default function Result() {
 
         {/* Left sidebar — tools & insights ─────────────────────────────── */}
         <aside data-tour="result-tools" className="min-w-0 space-y-4 xl:sticky xl:top-20 xl:self-start">
-
-          {/* Refine / iterate */}
-          <RefinePanel data={data} />
 
           {/* Match Score Ring */}
           <MatchScoreWidget percent={data.diagram_match_percent ?? 0} />

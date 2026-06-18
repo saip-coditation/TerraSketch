@@ -66,15 +66,6 @@ class GenerateRequest(BaseModel):
             raise ValueError("text_description is required when input_type is 'text' or 'draw'")
 
 
-class RefineRequest(BaseModel):
-    generation_id: str = Field(min_length=1, max_length=36)
-    instruction: str = Field(
-        min_length=1,
-        max_length=8000,
-        description="The change to apply to the existing Terraform (e.g. 'add a Redis cache').",
-    )
-
-
 class GeneratedFiles(BaseModel):
     main_tf: str = Field(alias="main.tf")
     variables_tf: str = Field(alias="variables.tf")

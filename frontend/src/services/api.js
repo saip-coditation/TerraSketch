@@ -99,16 +99,6 @@ export async function generateTerraform(payload) {
   return data;
 }
 
-/** Apply a change to an existing generation's Terraform; returns a new generation. */
-export async function refineGeneration(generationId, instruction) {
-  const { data } = await postWithGatewayRetry(
-    "/api/refine",
-    { generation_id: generationId, instruction },
-    { timeout: LLM_TIMEOUT_MS }
-  );
-  return data;
-}
-
 export async function generateTerraformV2(payload) {
   const { data } = await api.post("/api/v2/generate", payload, { timeout: LLM_TIMEOUT_MS });
   return data;
