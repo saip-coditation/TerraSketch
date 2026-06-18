@@ -15,8 +15,9 @@ from app.api.deps import get_db, get_optional_user
 from app.core.config import get_settings
 from app.core.limiter import limiter
 from app.db import models
-from app.db.schemas import ClaudeOutput, GenerateRequest, GenerateResponse
+from app.db.schemas import ClaudeOutput, GenerateRequest, GenerateResponse, RefineRequest
 from app.services.llm.router import LLMServiceError, generate_terraform
+from app.services.llm.claude import ClaudeServiceError, refine_terraform
 from app.services.quality.diagram_match import (
     analyze_diagram_match,
     improvement_advice_for_canonical_baseline,
@@ -423,6 +424,79 @@ async def post_generate(
         created_at=datetime.utcnow(),
     )
     return _response_from_record(dummy, rid)
+
+
+@router.post(
+    "/refine",
+    response_model=GenerateResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Apply a change to an existing generation's Terraform",
+)
+@limiter.limit(get_settings().RATE_LIMIT_GENERATE)
+async def post_refine(
+    request: Request,
+    payload: RefineRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_optional_user),
+) -> GenerateResponse:
+    source = db.get(models.Generation, payload.generation_id.strip())
+    if not source:
+        raise HTTPException(status_code=404, detail="Generation not found")
+    files = source.generated_files or {}
+    if not files:
+        raise HTTPException(status_code=400, detail="Source generation has no files to refine")
+
+    try:
+        ai_output = await refine_terraform(
+            files=files,
+            instruction=payload.instruction,
+            cloud_provider=source.cloud_provider,
+            environment=source.environment,
+        )
+    except ClaudeServiceError as exc:
+        logger.warning("Refine LLM error: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Unexpected refine error")
+        raise HTTPException(status_code=500, detail=f"Refine error: {exc}") from exc
+
+    try:
+        result = GenerationPipeline.run(
+            ai_output=ai_output,
+            cloud_provider=source.cloud_provider,
+            environment=source.environment,
+            session_id=source.session_id or "",
+            compare_row=source,
+        )
+    except Exception as exc:
+        logger.exception("Pipeline error during refine")
+        raise HTTPException(status_code=500, detail=f"Pipeline error: {exc}") from exc
+
+    record = models.Generation(
+        session_id=source.session_id,
+        user_id=current_user.id if current_user else source.user_id,
+        cloud_provider=source.cloud_provider,
+        environment=source.environment,
+        input_type=source.input_type,
+        input_description=source.input_description,
+        resources_identified=result.resources_identified,
+        assumptions=result.assumptions,
+        generated_files=result.files,
+        usage_instructions=result.usage_instructions,
+        diagram_match_percent=result.match_percent,
+        improvement_advice=result.improvement_advice,
+        security_warnings=result.security_warnings,
+        terraform_validation=result.terraform_validation,
+        file_diff_summary=result.file_diff_summary,
+        confidence_scores=result.confidence_scores,
+        placeholders=result.placeholders,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+
+    rid = getattr(request.state, "request_id", None)
+    return _response_from_record(record, rid)
 
 
 @router.get(

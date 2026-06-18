@@ -1,18 +1,14 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { generateTerraform } from "../../services/api.js";
-import { getSessionId } from "../../utils/sessionId.js";
+import { refineGeneration } from "../../services/api.js";
 
 /**
  * RefinePanel — iterate on an existing generation without starting over.
  *
- * Re-runs generation from the original description plus a refinement instruction
- * (reusing the backend's `correction_note`), comparing against the current
- * generation so the new result shows a file-level diff. Security/compliance
+ * Edits the actual generated Terraform files (via /api/refine) and compares the
+ * result against the current generation so the new result shows a file-level
+ * diff. Works for any generation — text or diagram/import. Security/compliance
  * findings become one-click "fix" actions.
- *
- * Refinement needs the original text description, so it's only offered for
- * text-described generations (image-only runs fall back to "Re-generate").
  */
 export default function RefinePanel({ data }) {
   const navigate = useNavigate();
@@ -20,24 +16,15 @@ export default function RefinePanel({ data }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
-  const canRefine = !!(data?.input_description || "").trim();
   const quickFixes = (data?.security_warnings || []).slice(0, 5);
 
   const runRefine = async (rawNote) => {
     const note = (rawNote ?? instruction).trim();
-    if (!note || busy || !canRefine) return;
+    if (!note || busy) return;
     setBusy(true);
     setError(null);
     try {
-      const result = await generateTerraform({
-        input_type: "text",
-        text_description: data.input_description,
-        cloud_provider: data.cloud_provider,
-        environment: data.environment,
-        correction_note: note,
-        compare_generation_id: data.generation_id,
-        session_id: getSessionId(),
-      });
+      const result = await refineGeneration(data.generation_id, note);
       setInstruction("");
       navigate(`/result/${result.generation_id}`, { state: result });
     } catch (e) {
@@ -62,8 +49,7 @@ export default function RefinePanel({ data }) {
         </div>
       </div>
 
-      {canRefine ? (
-        <div className="mt-3 space-y-3">
+      <div className="mt-3 space-y-3">
           <textarea
             className="textarea min-h-[72px] text-sm"
             placeholder="e.g. add a Redis cache between the app and database, make the RDS multi-AZ, add CloudWatch alarms…"
@@ -111,12 +97,6 @@ export default function RefinePanel({ data }) {
 
           {error && <p className="text-xs text-rose-300">{error}</p>}
         </div>
-      ) : (
-        <p className="mt-3 rounded-lg border border-white/10 bg-white/[0.03] p-3 text-xs text-slate-400">
-          Refine works on text-described generations. This one came from a diagram/import — use
-          <span className="font-medium text-slate-300"> Re-generate</span> to start from your input.
-        </p>
-      )}
     </div>
   );
 }
