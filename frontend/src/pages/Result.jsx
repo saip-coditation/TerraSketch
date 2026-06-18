@@ -11,6 +11,8 @@ import ShareAndGitCard from "../components/insights/ShareAndGitCard.jsx";
 import { getApiBaseUrl, getGeneration, postFeedback } from "../services/api.js";
 import CostBreakdown from "../components/insights/CostBreakdown.jsx";
 import RefinePanel from "../components/insights/RefinePanel.jsx";
+import { downloadZip } from "../utils/downloadZip.js";
+import { buildModuleFiles } from "../utils/moduleStructure.js";
 import CostOptimizer from "../components/insights/CostOptimizer.jsx";
 import MermaidExport from "../components/insights/MermaidExport.jsx";
 import SecurityScorePanel from "../components/insights/SecurityScorePanel.jsx";
@@ -625,11 +627,37 @@ export default function Result() {
 
           {/* Terraform code */}
           <section data-tour="result-code">
-            <SectionHeader
-              icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>}
-              title="Terraform Output"
-              subtitle={`${fileCount} file${fileCount !== 1 ? "s" : ""} generated`}
-            />
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <SectionHeader
+                icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>}
+                title="Terraform Output"
+                subtitle={`${fileCount} file${fileCount !== 1 ? "s" : ""} generated`}
+              />
+              {fileCount > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => downloadZip(data.files || {}, "terrasketch.zip")}
+                    className="btn-secondary py-1.5 px-3 text-xs"
+                  >
+                    Download .zip
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      downloadZip(
+                        buildModuleFiles(data.files || {}, `${data.cloud_provider}_${data.environment}`),
+                        "terrasketch-module.zip"
+                      )
+                    }
+                    title="Repackage as a reusable Terraform module (modules/ + root caller)"
+                    className="btn-secondary py-1.5 px-3 text-xs"
+                  >
+                    Download as module
+                  </button>
+                </div>
+              )}
+            </div>
             <CodeViewer files={data.files || {}} />
           </section>
 
