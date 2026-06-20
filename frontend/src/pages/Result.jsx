@@ -10,8 +10,10 @@ import FileDiffSummary from "../components/insights/FileDiffSummary.jsx";
 import ShareAndGitCard from "../components/insights/ShareAndGitCard.jsx";
 import { getApiBaseUrl, getGeneration, postFeedback } from "../services/api.js";
 import CostBreakdown from "../components/insights/CostBreakdown.jsx";
+import HandoffPanel from "../components/insights/HandoffPanel.jsx";
 import { downloadZip } from "../utils/downloadZip.js";
 import { buildModuleFiles } from "../utils/moduleStructure.js";
+import { buildReadme } from "../utils/handoff.js";
 import CostOptimizer from "../components/insights/CostOptimizer.jsx";
 import MermaidExport from "../components/insights/MermaidExport.jsx";
 import SecurityScorePanel from "../components/insights/SecurityScorePanel.jsx";
@@ -288,6 +290,9 @@ export default function Result() {
   const initial = location.state || null;
 
   const [data, setData] = useState(initial);
+  // Local working copy of the files so handoff actions (e.g. version pinning)
+  // can update what the viewer/downloads show. Re-syncs when the generation changes.
+  const [files, setFiles] = useState(() => initial?.files || {});
   const [loading, setLoading] = useState(!initial);
   const [error, setError] = useState(null);
   const [rating, setRating] = useState(0);
@@ -317,6 +322,11 @@ export default function Result() {
     })();
     return () => { cancel = true; };
   }, [id, initial]);
+
+  // Keep the working file copy in sync with the loaded generation.
+  useEffect(() => {
+    setFiles(data?.files || {});
+  }, [data]);
 
   const submitFeedback = async () => {
     if (!rating) {
@@ -548,6 +558,9 @@ export default function Result() {
         {/* Left sidebar — tools & insights ─────────────────────────────── */}
         <aside data-tour="result-tools" className="min-w-0 space-y-4 xl:sticky xl:top-20 xl:self-start">
 
+          {/* Hand off — copy for AI, README, version pinning */}
+          <HandoffPanel data={data} files={files} onApplyFiles={setFiles} />
+
           {/* Match Score Ring */}
           <MatchScoreWidget percent={data.diagram_match_percent ?? 0} />
 
@@ -633,7 +646,12 @@ export default function Result() {
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => downloadZip(data.files || {}, "terrasketch.zip")}
+                    onClick={() =>
+                      downloadZip(
+                        { ...files, "README.md": buildReadme(data, files) },
+                        "terrasketch.zip"
+                      )
+                    }
                     className="btn-secondary py-1.5 px-3 text-xs"
                   >
                     Download .zip
@@ -642,7 +660,7 @@ export default function Result() {
                     type="button"
                     onClick={() =>
                       downloadZip(
-                        buildModuleFiles(data.files || {}, `${data.cloud_provider}_${data.environment}`),
+                        buildModuleFiles(files, `${data.cloud_provider}_${data.environment}`),
                         "terrasketch-module.zip"
                       )
                     }
@@ -654,7 +672,7 @@ export default function Result() {
                 </div>
               )}
             </div>
-            <CodeViewer files={data.files || {}} />
+            <CodeViewer files={files} />
           </section>
 
           {/* ── Code Explanation (NEW) ──────────────────────────────────── */}
