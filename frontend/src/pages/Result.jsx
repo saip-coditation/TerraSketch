@@ -185,7 +185,7 @@ function ConfidenceScores({ scores }) {
 
 // ── Match Score Widget ───────────────────────────────────────────────────────
 
-function MatchScoreWidget({ percent }) {
+function MatchScoreWidget({ percent, advice = [] }) {
   const pct = Math.min(100, Math.max(0, percent));
   const radius = 36;
   const circ = 2 * Math.PI * radius;
@@ -195,32 +195,59 @@ function MatchScoreWidget({ percent }) {
     pct >= 80 ? "Great match" : pct >= 60 ? "Good match" : pct >= 40 ? "Partial match" : "Low match";
 
   return (
-    <div className="card p-5 flex items-center gap-5">
-      <div className="relative shrink-0">
-        <svg width="88" height="88" viewBox="0 0 88 88" className="-rotate-90">
-          <circle cx="44" cy="44" r={radius} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="7" />
-          <circle
-            cx="44"
-            cy="44"
-            r={radius}
-            fill="none"
-            stroke={color}
-            strokeWidth="7"
-            strokeLinecap="round"
-            strokeDasharray={circ}
-            strokeDashoffset={circ - (circ * pct) / 100}
-            style={{ transition: "stroke-dashoffset 0.8s ease" }}
-          />
-        </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-xl font-bold tabular-nums" style={{ color }}>{pct}%</span>
+    <div className="card p-5">
+      <div className="flex items-center gap-5">
+        <div className="relative shrink-0">
+          <svg width="88" height="88" viewBox="0 0 88 88" className="-rotate-90">
+            <circle cx="44" cy="44" r={radius} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="7" />
+            <circle
+              cx="44"
+              cy="44"
+              r={radius}
+              fill="none"
+              stroke={color}
+              strokeWidth="7"
+              strokeLinecap="round"
+              strokeDasharray={circ}
+              strokeDashoffset={circ - (circ * pct) / 100}
+              style={{ transition: "stroke-dashoffset 0.8s ease" }}
+            />
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="text-xl font-bold tabular-nums" style={{ color }}>{pct}%</span>
+          </div>
+        </div>
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500">Diagram match</p>
+          <p className="mt-0.5 text-base font-semibold text-slate-200">{label}</p>
+          <p className="mt-1 text-xs text-slate-500">How closely this Terraform reflects your described architecture.</p>
         </div>
       </div>
-      <div>
-        <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500">Diagram match</p>
-        <p className="mt-0.5 text-base font-semibold text-slate-200">{label}</p>
-        <p className="mt-1 text-xs text-slate-500">How closely this Terraform reflects your described architecture.</p>
-      </div>
+
+      {advice.length > 0 && (
+        <div className="mt-4 border-t border-white/5 pt-3">
+          <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber-300/90">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            What's missing or could improve
+          </p>
+          <ul className="space-y-1.5">
+            {advice.map((a, i) => (
+              <li key={i} className="flex gap-2 text-xs leading-snug text-slate-300">
+                <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-amber-400/70" />
+                <span className="break-words">{a}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-[10px] text-slate-500">
+            {pct < 100
+              ? "These are gaps vs. common reference patterns — add them (or refine your description) to raise the match."
+              : ""}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -562,7 +589,10 @@ export default function Result() {
           <HandoffPanel data={data} files={files} onApplyFiles={setFiles} />
 
           {/* Match Score Ring */}
-          <MatchScoreWidget percent={data.diagram_match_percent ?? 0} />
+          <MatchScoreWidget
+            percent={data.diagram_match_percent ?? 0}
+            advice={data.improvement_advice || []}
+          />
 
           {/* Confidence scores */}
           {data.confidence_scores && Object.keys(data.confidence_scores).length > 0 && (

@@ -294,7 +294,7 @@ export default function MermaidExport({ resources = [], files = null }) {
           </span>
           <div>
             <p className="flex items-center gap-2 text-sm font-semibold text-slate-100">
-              Architecture Diagram
+              Block Diagram
               {fromCode && (
                 <span className="rounded-full border border-violet-400/30 bg-violet-400/10 px-1.5 py-0 text-[10px] font-medium text-violet-300">
                   from code
