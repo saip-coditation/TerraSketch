@@ -1,1 +1,3 @@
-requests>=2.31.0
+# Unpinned: Amazon Linux ships an rpm-managed `requests` that pip can't upgrade,
+# and the agent only needs basic Session/get/post — any modern version is fine.
+requests
