@@ -83,15 +83,38 @@ def _example_value(name: str, body: str, region: str, suffix: str) -> str:
     return f'"terrasketch-demo-{suffix}"'
 
 
-def example_tfvars(variables_tf: str, region: str) -> str:
-    """Generate example values for variables that have no default (else apply fails)."""
+def inject_var_defaults(variables_tf: str, region: str) -> str:
+    """Add `default = <example>` to any variable that lacks one, so `apply` does
+    not fail on "No value for required variable". Edits variables.tf in place so
+    it works regardless of worker version (no separate tfvars file needed)."""
+    if not variables_tf:
+        return variables_tf
     suffix = uuid.uuid4().hex[:6]
-    lines = []
-    for name, body in _var_blocks(variables_tf):
+    inserts = []  # (position, text)
+    for m in re.finditer(r'variable\s+"([^"]+)"\s*\{', variables_tf):
+        name = m.group(1)
+        brace = variables_tf.index("{", m.start())
+        depth = 0
+        end = brace
+        for j in range(brace, len(variables_tf)):
+            if variables_tf[j] == "{":
+                depth += 1
+            elif variables_tf[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = j
+                    break
+        body = variables_tf[brace + 1 : end]
         if re.search(r"(^|\n)\s*default\s*=", body):
             continue  # already has a default — leave it
-        lines.append(f"{name} = {_example_value(name, body, region, suffix)}")
-    return ("\n".join(lines) + "\n") if lines else ""
+        val = _example_value(name, body, region, suffix)
+        inserts.append((brace + 1, f"\n  default = {val}"))
+    if not inserts:
+        return variables_tf
+    result = variables_tf
+    for pos, text in sorted(inserts, reverse=True):  # back-to-front keeps offsets valid
+        result = result[:pos] + text + result[pos:]
+    return result
 
 
 class DeployRequest(BaseModel):
@@ -130,9 +153,8 @@ def post_deploy(
 
     # Fill any required (no-default) variables with example values so apply
     # doesn't fail on "No value for required variable".
-    tfvars = example_tfvars(files.get("variables.tf", ""), payload.region)
-    if tfvars:
-        files = {**files, "terraform.auto.tfvars": tfvars}
+    if files.get("variables.tf"):
+        files = {**files, "variables.tf": inject_var_defaults(files["variables.tf"], payload.region)}
 
     did = str(uuid.uuid4())
     with _LOCK:
