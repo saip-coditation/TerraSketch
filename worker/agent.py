@@ -80,9 +80,9 @@ def run_terraform(job: dict) -> None:
         shutil.rmtree(workdir, ignore_errors=True)
     workdir.mkdir(parents=True, exist_ok=True)
 
-    # Write the Terraform files, and prior state for destroy/re-apply.
+    # Write the Terraform files (incl. *.auto.tfvars), and prior state for destroy/re-apply.
     for name, content in (job.get("files") or {}).items():
-        if name.endswith(".tf"):
+        if name.endswith((".tf", ".tfvars")):
             (workdir / name).write_text(content or "", encoding="utf-8")
     if job.get("state"):
         (workdir / "terraform.tfstate").write_text(job["state"], encoding="utf-8")

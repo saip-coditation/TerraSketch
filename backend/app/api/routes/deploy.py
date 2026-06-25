@@ -14,6 +14,7 @@ Note (MVP): the store is in-process memory — fine for a single-instance host;
 deployments are lost on restart. DB persistence is a later hardening step.
 """
 
+import re
 import threading
 import time
 import uuid
@@ -44,6 +45,53 @@ def _require_worker(authorization: str | None) -> None:
         raise HTTPException(status_code=503, detail="Deploy worker is not configured.")
     if authorization != f"Bearer {token}":
         raise HTTPException(status_code=401, detail="Invalid worker token.")
+
+
+def _var_blocks(variables_tf: str):
+    """Yield (name, body) for each `variable "name" { ... }` block."""
+    for m in re.finditer(r'variable\s+"([^"]+)"\s*\{', variables_tf or ""):
+        start = variables_tf.index("{", m.start())
+        depth = 0
+        for j in range(start, len(variables_tf)):
+            if variables_tf[j] == "{":
+                depth += 1
+            elif variables_tf[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    yield m.group(1), variables_tf[start + 1 : j]
+                    break
+
+
+def _example_value(name: str, body: str, region: str, suffix: str) -> str:
+    tmatch = re.search(r"type\s*=\s*([A-Za-z0-9_().]+)", body)
+    t = (tmatch.group(1) if tmatch else "string").lower()
+    low = name.lower()
+    if t.startswith("number"):
+        return "1"
+    if t.startswith("bool"):
+        return "false"
+    if t.startswith("list"):
+        return "[]"
+    if t.startswith("map") or t.startswith("object"):
+        return "{}"
+    if "region" in low or "location" in low:
+        return f'"{region}"'
+    if "cidr" in low:
+        return '"10.0.0.0/16"'
+    if "availability_zone" in low or low.endswith("_az"):
+        return f'"{region}a"'
+    return f'"terrasketch-demo-{suffix}"'
+
+
+def example_tfvars(variables_tf: str, region: str) -> str:
+    """Generate example values for variables that have no default (else apply fails)."""
+    suffix = uuid.uuid4().hex[:6]
+    lines = []
+    for name, body in _var_blocks(variables_tf):
+        if re.search(r"(^|\n)\s*default\s*=", body):
+            continue  # already has a default — leave it
+        lines.append(f"{name} = {_example_value(name, body, region, suffix)}")
+    return ("\n".join(lines) + "\n") if lines else ""
 
 
 class DeployRequest(BaseModel):
@@ -79,6 +127,12 @@ def post_deploy(
     files = gen.generated_files or {}
     if not files:
         raise HTTPException(status_code=400, detail="Generation has no files to deploy")
+
+    # Fill any required (no-default) variables with example values so apply
+    # doesn't fail on "No value for required variable".
+    tfvars = example_tfvars(files.get("variables.tf", ""), payload.region)
+    if tfvars:
+        files = {**files, "terraform.auto.tfvars": tfvars}
 
     did = str(uuid.uuid4())
     with _LOCK:
