@@ -177,6 +177,9 @@ app.include_router(review_routes.router, prefix="/api", tags=["review"])
 from app.api.routes import cost as cost_routes  # noqa: E402
 app.include_router(cost_routes.router, prefix="/api", tags=["cost"])
 
+from app.api.routes import deploy as deploy_routes  # noqa: E402
+app.include_router(deploy_routes.router, prefix="/api", tags=["deploy"])
+
 
 @app.get("/", tags=["meta"])
 def root():

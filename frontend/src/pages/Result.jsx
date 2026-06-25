@@ -11,6 +11,7 @@ import ShareAndGitCard from "../components/insights/ShareAndGitCard.jsx";
 import { getApiBaseUrl, getGeneration, postFeedback } from "../services/api.js";
 import CostBreakdown from "../components/insights/CostBreakdown.jsx";
 import HandoffPanel from "../components/insights/HandoffPanel.jsx";
+import DeployPanel from "../components/insights/DeployPanel.jsx";
 import { downloadZip } from "../utils/downloadZip.js";
 import { buildModuleFiles } from "../utils/moduleStructure.js";
 import { buildReadme } from "../utils/handoff.js";
@@ -584,6 +585,9 @@ export default function Result() {
 
         {/* Left sidebar — tools & insights ─────────────────────────────── */}
         <aside data-tour="result-tools" className="min-w-0 space-y-4 xl:sticky xl:top-20 xl:self-start">
+
+          {/* Deploy to AWS */}
+          <DeployPanel data={data} />
 
           {/* Hand off — copy for AI, README, version pinning */}
           <HandoffPanel data={data} files={files} onApplyFiles={setFiles} />

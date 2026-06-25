@@ -198,6 +198,23 @@ export async function getCostBreakdown(files) {
   return data;
 }
 
+// ── Deploy ────────────────────────────────────────────────────────────────────
+
+export async function startDeploy(payload) {
+  const { data } = await api.post("/api/deploy", payload, { timeout: 60_000 });
+  return data; // { deployment_id }
+}
+
+export async function getDeploy(deploymentId) {
+  const { data } = await api.get(`/api/deploy/${deploymentId}`, { timeout: 30_000 });
+  return data; // { status, logs, outputs, error, action, region }
+}
+
+export async function destroyDeploy(deploymentId, payload) {
+  const { data } = await api.post(`/api/deploy/${deploymentId}/destroy`, payload, { timeout: 60_000 });
+  return data;
+}
+
 export function getApiBaseUrl() {
   return baseURL.replace(/\/$/, "");
 }

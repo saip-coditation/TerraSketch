@@ -91,6 +91,10 @@ class Settings(BaseSettings):
     # `infracost` CLI in the image to enable live cloud-API cost breakdowns.
     INFRACOST_API_KEY: str = ""
 
+    # Shared secret the Terraform worker uses to authenticate (must match the
+    # WORKER_TOKEN set on the worker box). Empty disables the deploy feature.
+    WORKER_TOKEN: str = ""
+
     # Resend API for feedback notifications (https://resend.com — free 3K emails/month)
     RESEND_API_KEY: str = ""
     FEEDBACK_EMAIL: str = "phapalesai25@gmail.com"
