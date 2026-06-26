@@ -117,6 +117,36 @@ def inject_var_defaults(variables_tf: str, region: str) -> str:
     return result
 
 
+def prepare_files_for_deploy(files: dict, region: str) -> dict:
+    """Make generated files deployable: substitute <REPLACE_*> placeholders with
+    real, AWS-valid, unique values; force the provider region; and give any
+    no-default variables a value. Returns a new files dict."""
+    suffix = uuid.uuid4().hex[:8]
+    safe_name = f"terrasketch-demo-{suffix}"  # lowercase + hyphens → valid S3/most names
+
+    out: dict[str, str] = {}
+    for name, content in (files or {}).items():
+        c = content or ""
+        c = c.replace("<REPLACE_REGION>", region)
+        c = re.sub(r"<REPLACE_[A-Z0-9_]*CIDR[A-Z0-9_]*>", "10.0.0.0/16", c)
+        c = re.sub(r"<REPLACE_[A-Z0-9_]*(?:AZ|AVAILABILITY)[A-Z0-9_]*>", f"{region}a", c)
+        # any remaining placeholder → a safe, unique name
+        c = re.sub(r"<REPLACE_[A-Z0-9_]+>", safe_name, c)
+        out[name] = c
+
+    # Force the provider's region to the one the user picked (covers a hardcoded region).
+    if out.get("providers.tf"):
+        out["providers.tf"] = re.sub(
+            r'region\s*=\s*"[^"]*"', f'region = "{region}"', out["providers.tf"], count=1
+        )
+
+    # Fill any required (no-default) variables so apply doesn't fail.
+    if out.get("variables.tf"):
+        out["variables.tf"] = inject_var_defaults(out["variables.tf"], region)
+
+    return out
+
+
 class DeployRequest(BaseModel):
     generation_id: str
     region: str = "us-east-1"
@@ -151,10 +181,10 @@ def post_deploy(
     if not files:
         raise HTTPException(status_code=400, detail="Generation has no files to deploy")
 
-    # Fill any required (no-default) variables with example values so apply
-    # doesn't fail on "No value for required variable".
-    if files.get("variables.tf"):
-        files = {**files, "variables.tf": inject_var_defaults(files["variables.tf"], payload.region)}
+    # Make the generated files deployable: substitute <REPLACE_*> placeholders
+    # (region, names, CIDRs), force the provider region, and default any
+    # required variables.
+    files = prepare_files_for_deploy(files, payload.region)
 
     did = str(uuid.uuid4())
     with _LOCK:
