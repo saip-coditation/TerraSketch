@@ -139,38 +139,38 @@ export default function DeployPanel({ data }) {
   );
 
   const KeyInputs = (
-    <>
+    <div className="grid gap-3 sm:grid-cols-3">
       <label className="block">
-        <span className="mb-1 block text-[11px] text-slate-400">Region</span>
-        <select className="input w-full py-1.5 text-xs" value={region} onChange={(e) => setRegion(e.target.value)}>
+        <span className="mb-1 block text-xs text-slate-400">Region</span>
+        <select className="input w-full py-2 text-sm" value={region} onChange={(e) => setRegion(e.target.value)}>
           {REGIONS.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
       </label>
       <label className="block">
-        <span className="mb-1 block text-[11px] text-slate-400">AWS Access Key ID</span>
-        <input className="input w-full py-1.5 text-xs font-mono" value={accessKey} autoComplete="off"
+        <span className="mb-1 block text-xs text-slate-400">AWS Access Key ID</span>
+        <input className="input w-full py-2 text-sm font-mono" value={accessKey} autoComplete="off"
           onChange={(e) => setAccessKey(e.target.value)} placeholder="AKIA…" />
       </label>
       <label className="block">
-        <span className="mb-1 block text-[11px] text-slate-400">AWS Secret Access Key</span>
-        <input className="input w-full py-1.5 text-xs font-mono" type="password" value={secretKey} autoComplete="off"
+        <span className="mb-1 block text-xs text-slate-400">AWS Secret Access Key</span>
+        <input className="input w-full py-2 text-sm font-mono" type="password" value={secretKey} autoComplete="off"
           onChange={(e) => setSecretKey(e.target.value)} placeholder="••••••••" />
       </label>
-    </>
+    </div>
   );
 
   return (
-    <div className="card p-4">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-orange-500/30 to-amber-500/20 text-orange-300">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <div className="card-glow p-5 sm:p-6">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-orange-500/30 to-amber-500/20 text-orange-300 ring-1 ring-orange-400/20">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M4 17V7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10" /><path d="m8 12 3 3 5-6" />
             </svg>
           </span>
           <div>
-            <p className="text-sm font-semibold text-slate-100">Deploy to AWS</p>
-            <p className="text-xs text-slate-400">Apply this stack to your account.</p>
+            <p className="text-lg font-bold text-white">Deploy to AWS</p>
+            <p className="text-sm text-slate-400">Create or destroy this infrastructure on your AWS account.</p>
           </div>
         </div>
         {status && <StatusBadge status={status} />}
@@ -180,10 +180,10 @@ export default function DeployPanel({ data }) {
 
       {/* Collapsed */}
       {mode === "collapsed" && (
-        <div className="mt-3 space-y-2">
+        <div className="mt-4 space-y-3">
           {Warning}
           <button type="button" onClick={() => { setError(null); setMode("deploy-form"); }}
-            className="btn-primary w-full justify-center py-2.5 text-sm">
+            className="btn-primary w-full justify-center py-3 text-sm sm:w-auto sm:px-8">
             Deploy to AWS
           </button>
         </div>
@@ -191,16 +191,16 @@ export default function DeployPanel({ data }) {
 
       {/* Deploy form */}
       {mode === "deploy-form" && (
-        <div className="mt-3 space-y-2.5">
+        <div className="mt-4 space-y-3">
           {Warning}
           {KeyInputs}
           <div className="flex gap-2">
             <button type="button" onClick={onDeploy} disabled={busy}
-              className="btn-primary flex-1 justify-center py-2 text-xs disabled:opacity-60">
+              className="btn-primary justify-center py-2.5 px-6 text-sm disabled:opacity-60">
               {busy ? "Starting…" : "Terraform apply"}
             </button>
             <button type="button" onClick={() => { wipeKeys(); setMode("collapsed"); setError(null); }}
-              className="btn-secondary justify-center py-2 px-3 text-xs">
+              className="btn-secondary justify-center py-2.5 px-4 text-sm">
               Cancel
             </button>
           </div>
@@ -209,8 +209,8 @@ export default function DeployPanel({ data }) {
 
       {/* Active — live logs */}
       {mode === "active" && (
-        <div className="mt-3 space-y-2">
-          <pre ref={logRef} className="max-h-64 overflow-auto rounded-lg bg-black/50 p-3 font-mono text-[11px] leading-relaxed text-slate-300 whitespace-pre-wrap">
+        <div className="mt-4 space-y-3">
+          <pre ref={logRef} className="max-h-[28rem] min-h-[12rem] overflow-auto rounded-xl border border-white/10 bg-black/60 p-4 font-mono text-xs leading-relaxed text-slate-300 whitespace-pre-wrap">
             {logs || "Waiting for the worker to pick up the job…"}
           </pre>
 

@@ -580,14 +580,14 @@ export default function Result() {
         </div>
       </div>
 
+      {/* ── Deploy to AWS — full width, primary action ───────────────────── */}
+      <DeployPanel data={data} />
+
       {/* ── Dashboard main grid ──────────────────────────────────────────── */}
       <div className="grid min-w-0 gap-6 lg:gap-8 xl:grid-cols-[minmax(0,320px),minmax(0,1fr)] xl:items-start">
 
         {/* Left sidebar — tools & insights ─────────────────────────────── */}
         <aside data-tour="result-tools" className="min-w-0 space-y-4 xl:sticky xl:top-20 xl:self-start">
-
-          {/* Deploy to AWS */}
-          <DeployPanel data={data} />
 
           {/* Hand off — copy for AI, README, version pinning */}
           <HandoffPanel data={data} files={files} onApplyFiles={setFiles} />
