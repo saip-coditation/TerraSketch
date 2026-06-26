@@ -120,6 +120,13 @@ GCP SPECIFIC RULES:
 # Shared correctness rules and output format (appended last)
 # ---------------------------------------------------------------------------
 _SHARED_RULES = """
+DEPLOYABILITY (the output should `terraform apply` cleanly on a fresh account):
+D1. Be self-contained — create the VPC, subnets, route tables, gateways and security groups the stack needs. Do NOT reference pre-existing infrastructure (VPC/subnet/SG/AMI/cert) by id unless it is created in this same code.
+D2. Prefer data sources over placeholders for values the cloud can resolve: AWS account id via data.aws_caller_identity, region via data.aws_region, AZs via data.aws_availability_zones, and AMIs via data.aws_ami (most_recent=true with the correct owners) — never hardcode or <REPLACE_> an AMI id.
+D3. Every variable MUST have a sensible default so the stack applies with no extra input.
+D4. For secrets (e.g. DB passwords), use a variable with a default or a random_password resource (hashicorp/random) — never a value that blocks apply.
+D5. Reserve <REPLACE_*> for things a human must change later, and even then give the variable a working default. Do not put <REPLACE_*> in provider config (e.g. region) — leave region to the variable/default.
+
 HCL CORRECTNESS:
 19. Use only resources for the target provider (aws, azure, or gcp) — do not mix providers.
 20. Every var.foo reference must have a matching variable "foo" block in variables.tf with type and description.

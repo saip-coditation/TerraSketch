@@ -15,6 +15,7 @@ deployments are lost on restart. DB persistence is a later hardening step.
 """
 
 import re
+import secrets
 import threading
 import time
 import uuid
@@ -123,6 +124,7 @@ def prepare_files_for_deploy(files: dict, region: str) -> dict:
     no-default variables a value. Returns a new files dict."""
     suffix = uuid.uuid4().hex[:8]
     safe_name = f"terrasketch-demo-{suffix}"  # lowercase + hyphens → valid S3/most names
+    password = "Ts1" + secrets.token_urlsafe(18)  # strong, RDS-safe (no / @ " space)
 
     out: dict[str, str] = {}
     for name, content in (files or {}).items():
@@ -130,6 +132,8 @@ def prepare_files_for_deploy(files: dict, region: str) -> dict:
         c = c.replace("<REPLACE_REGION>", region)
         c = re.sub(r"<REPLACE_[A-Z0-9_]*CIDR[A-Z0-9_]*>", "10.0.0.0/16", c)
         c = re.sub(r"<REPLACE_[A-Z0-9_]*(?:AZ|AVAILABILITY)[A-Z0-9_]*>", f"{region}a", c)
+        # secrets/passwords → a strong generated value (so RDS etc. apply)
+        c = re.sub(r"<REPLACE_[A-Z0-9_]*(?:PASSWORD|SECRET|PASS|PWD)[A-Z0-9_]*>", password, c)
         # any remaining placeholder → a safe, unique name
         c = re.sub(r"<REPLACE_[A-Z0-9_]+>", safe_name, c)
         out[name] = c
