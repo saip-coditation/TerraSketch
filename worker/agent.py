@@ -66,6 +66,30 @@ def post_update(job_id: str, **fields) -> None:
         print(f"[warn] update POST failed: {exc}", file=sys.stderr)
 
 
+def _capture(cmd: list, cwd, env) -> tuple:
+    """Run a command and return (returncode, combined output) without streaming."""
+    try:
+        p = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, timeout=120)
+        return p.returncode, (p.stdout or "") + (p.stderr or "")
+    except Exception as exc:  # noqa: BLE001
+        return 1, str(exc)
+
+
+def request_fix(files: dict, error: str):
+    """Ask the backend to repair the files given a terraform error. Returns files or None."""
+    try:
+        r = _session.post(
+            f"{BACKEND_URL}/api/worker/fix",
+            json={"files": files, "error": error[-6000:]},
+            timeout=200,
+        )
+        if r.status_code == 200:
+            return r.json().get("files")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[warn] fix request failed: {exc}", file=sys.stderr)
+    return None
+
+
 def run_terraform(job: dict) -> None:
     job_id = job["id"]
     action = job.get("action", "apply")
@@ -100,16 +124,7 @@ def run_terraform(job: dict) -> None:
     if job.get("aws_session_token"):
         env["AWS_SESSION_TOKEN"] = job["aws_session_token"]
 
-    apply_cmd = (
-        ["terraform", "destroy", "-auto-approve", "-no-color"]
-        if action == "destroy"
-        else ["terraform", "apply", "-auto-approve", "-no-color"]
-    )
-    steps = [["terraform", "init", "-no-color", "-input=false"], apply_cmd]
-
-    post_update(job_id, status="running", log_append=f"$ starting terraform {action}\n")
-
-    for cmd in steps:
+    def stream(cmd: list) -> int:
         post_update(job_id, log_append=f"\n$ {' '.join(cmd)}\n")
         proc = subprocess.Popen(
             cmd, cwd=workdir, env=env,
@@ -123,10 +138,45 @@ def run_terraform(job: dict) -> None:
                 buffer = []
         if buffer:
             post_update(job_id, log_append="".join(buffer))
-        code = proc.wait()
-        if code != 0:
-            post_update(job_id, status="error", error=f"`{' '.join(cmd)}` exited {code}")
-            return
+        return proc.wait()
+
+    post_update(job_id, status="running", log_append=f"$ starting terraform {action}\n")
+
+    # 1. init
+    if stream(["terraform", "init", "-no-color", "-input=false"]) != 0:
+        post_update(job_id, status="error", error="terraform init failed")
+        return
+
+    # 2. validate → AI-fix loop (apply only; destroy reuses the saved state)
+    if action != "destroy":
+        files = {k: v for k, v in (job.get("files") or {}).items() if k.endswith((".tf", ".tfvars"))}
+        for attempt in range(3):
+            rc, output = _capture(["terraform", "validate", "-no-color"], workdir, env)
+            post_update(job_id, log_append=scrub(f"\n$ terraform validate\n{output}\n"))
+            if rc == 0:
+                break
+            if attempt == 2:
+                post_update(job_id, log_append="[validate still failing after fixes — trying apply anyway]\n")
+                break
+            post_update(job_id, log_append="[validate failed — asking AI to fix…]\n")
+            fixed = request_fix(files, output)
+            if not fixed or fixed == files:
+                post_update(job_id, log_append="[no fix produced — continuing]\n")
+                break
+            files = fixed
+            for name, content in files.items():
+                if name.endswith((".tf", ".tfvars")):
+                    (workdir / name).write_text(content or "", encoding="utf-8")
+
+    # 3. apply / destroy
+    action_cmd = (
+        ["terraform", "destroy", "-auto-approve", "-no-color"]
+        if action == "destroy"
+        else ["terraform", "apply", "-auto-approve", "-no-color"]
+    )
+    if stream(action_cmd) != 0:
+        post_update(job_id, status="error", error=f"terraform {action} failed")
+        return
 
     if action == "destroy":
         post_update(job_id, status="destroyed", log_append="\n✓ destroy complete\n")

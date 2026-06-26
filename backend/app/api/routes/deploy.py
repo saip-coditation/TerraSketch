@@ -14,6 +14,7 @@ Note (MVP): the store is in-process memory — fine for a single-instance host;
 deployments are lost on restart. DB persistence is a later hardening step.
 """
 
+import json
 import re
 import secrets
 import threading
@@ -143,6 +144,41 @@ def ensure_data_sources(files: dict) -> dict:
     return files
 
 
+def fix_terraform_files(files: dict, error: str) -> dict:
+    """Ask the LLM to repair the files given a terraform validate/apply error.
+    Returns a new files dict (unchanged files preserved)."""
+    from app.api.routes.review import _call_llm  # reuse the provider-agnostic LLM call
+
+    system = (
+        "You are a Terraform expert. The given Terraform files failed `terraform validate` or "
+        "`terraform apply`. Fix the error WITHOUT changing the intended architecture. Rules: target "
+        "AWS provider ~> 5.0; declare every data.<type>.<name> you reference; never use nested config "
+        "blocks removed in provider v4/v5 (use separate aws_s3_bucket_* resources, etc.); give every "
+        "variable a default; keep the stack self-contained (create its own VPC/subnets; resolve AMIs "
+        "via data.aws_ami). Return ONLY a JSON object with keys \"main.tf\", \"variables.tf\", "
+        "\"outputs.tf\", \"providers.tf\", each mapping to the COMPLETE corrected file content. No prose."
+    )
+    blob = "\n\n".join(f"=== {n} ===\n{c}" for n, c in files.items() if (c or "").strip())
+    user = f"terraform error:\n{error}\n\nCurrent files:\n{blob}"
+
+    raw = (_call_llm(system, user) or "").strip()
+    if raw.startswith("```"):
+        raw = re.sub(r"^```[a-z]*\n?", "", raw)
+        raw = re.sub(r"\n?```$", "", raw.strip())
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        m = re.search(r"\{[\s\S]+\}", raw)
+        data = json.loads(m.group()) if m else {}
+
+    out = dict(files)
+    for k in ("main.tf", "variables.tf", "outputs.tf", "providers.tf"):
+        v = data.get(k)
+        if isinstance(v, str) and v.strip():
+            out[k] = v
+    return out
+
+
 def prepare_files_for_deploy(files: dict, region: str) -> dict:
     """Make generated files deployable: substitute <REPLACE_*> placeholders with
     real, AWS-valid, unique values; force the provider region; and give any
@@ -192,6 +228,11 @@ class DestroyRequest(BaseModel):
     aws_secret_access_key: str
     aws_session_token: str | None = None
     confirm: bool = False
+
+
+class FixRequest(BaseModel):
+    files: dict[str, str]
+    error: str = ""
 
 
 # ── User-facing ───────────────────────────────────────────────────────────────
@@ -295,6 +336,15 @@ def worker_next_job(authorization: str | None = Header(default=None)):
                     "aws_session_token": keys.get("aws_session_token"),
                 }
     return Response(status_code=204)
+
+
+@router.post("/worker/fix", summary="Worker: ask the LLM to repair files given a terraform error")
+def worker_fix(payload: FixRequest, authorization: str | None = Header(default=None)) -> dict:
+    _require_worker(authorization)
+    try:
+        return {"files": fix_terraform_files(payload.files, payload.error)}
+    except Exception as exc:  # noqa: BLE001 — fix is best-effort
+        return {"files": payload.files, "error": str(exc)}
 
 
 @router.post("/worker/jobs/{job_id}", summary="Worker: post status/logs/state for a job")
