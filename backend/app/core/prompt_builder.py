@@ -130,6 +130,7 @@ D5. Reserve <REPLACE_*> for things a human must change later, and even then give
 HCL CORRECTNESS:
 19. Use only resources for the target provider (aws, azure, or gcp) — do not mix providers.
 20. Every var.foo reference must have a matching variable "foo" block in variables.tf with type and description.
+20a. Every data.<type>.<name> reference MUST have a matching `data "<type>" "<name>" {}` block declared. If you use availability zones, declare `data "aws_availability_zones" "available" { state = "available" }` before referencing it.
 21. Wire references correctly: security groups, subnets, VPC IDs, ARNs, target groups, listeners, IAM roles.
 22. Avoid deprecated arguments where the current provider docs recommend a replacement.
 23. Ensure subnet, route table, and IGW/NAT associations are complete when public/private tiers are shown.

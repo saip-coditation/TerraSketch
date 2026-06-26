@@ -118,6 +118,31 @@ def inject_var_defaults(variables_tf: str, region: str) -> str:
     return result
 
 
+# Standard no-arg AWS data sources the model often references but forgets to declare.
+_COMMON_DATA_SOURCES = {
+    ("aws_availability_zones", "available"): 'data "aws_availability_zones" "available" {\n  state = "available"\n}',
+    ("aws_caller_identity", "current"): 'data "aws_caller_identity" "current" {}',
+    ("aws_region", "current"): 'data "aws_region" "current" {}',
+    ("aws_partition", "current"): 'data "aws_partition" "current" {}',
+}
+
+
+def ensure_data_sources(files: dict) -> dict:
+    """Inject declarations for common data sources that are referenced but not
+    declared (e.g. data.aws_availability_zones.available used without a block)."""
+    all_text = "\n".join(v or "" for v in files.values())
+    additions = []
+    for (dtype, dname), block in _COMMON_DATA_SOURCES.items():
+        ref = f"data.{dtype}.{dname}"
+        declared = re.search(rf'data\s+"{dtype}"\s+"{dname}"', all_text)
+        if ref in all_text and not declared:
+            additions.append(block)
+    if additions and files.get("main.tf") is not None:
+        merged = files["main.tf"].rstrip() + "\n\n" + "\n\n".join(additions) + "\n"
+        files = {**files, "main.tf": merged}
+    return files
+
+
 def prepare_files_for_deploy(files: dict, region: str) -> dict:
     """Make generated files deployable: substitute <REPLACE_*> placeholders with
     real, AWS-valid, unique values; force the provider region; and give any
@@ -147,6 +172,9 @@ def prepare_files_for_deploy(files: dict, region: str) -> dict:
     # Fill any required (no-default) variables so apply doesn't fail.
     if out.get("variables.tf"):
         out["variables.tf"] = inject_var_defaults(out["variables.tf"], region)
+
+    # Declare any common data sources referenced but not declared.
+    out = ensure_data_sources(out)
 
     return out
 
