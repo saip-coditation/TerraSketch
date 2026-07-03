@@ -226,7 +226,12 @@ export default function DeployPanel({ data }) {
             </div>
           )}
 
-          {status === "applied" && (
+          {status === "error" && (
+            <p className="rounded-lg border border-rose-400/25 bg-rose-500/10 p-2.5 text-xs text-rose-200/90">
+              This deployment ended with an error. If any resources were created, use <b>Destroy</b> to clean them up.
+            </p>
+          )}
+          {(status === "applied" || status === "error") && (
             <button type="button" onClick={() => { setError(null); setMode("destroy-form"); }}
               className="btn-secondary w-full justify-center py-2 text-xs text-rose-200">
               Destroy this deployment

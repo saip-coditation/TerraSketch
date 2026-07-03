@@ -124,80 +124,100 @@ def run_terraform(job: dict) -> None:
     if job.get("aws_session_token"):
         env["AWS_SESSION_TOKEN"] = job["aws_session_token"]
 
-    def stream(cmd: list) -> int:
+    def stream(cmd: list):
+        """Run a command, streaming scrubbed output; returns (returncode, full output)."""
         post_update(job_id, log_append=f"\n$ {' '.join(cmd)}\n")
         proc = subprocess.Popen(
             cmd, cwd=workdir, env=env,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
         )
+        collected: list[str] = []
         buffer: list[str] = []
         for line in proc.stdout:  # type: ignore[union-attr]
-            buffer.append(scrub(line))
+            s = scrub(line)
+            collected.append(s)
+            buffer.append(s)
             if len(buffer) >= 10:
                 post_update(job_id, log_append="".join(buffer))
                 buffer = []
         if buffer:
             post_update(job_id, log_append="".join(buffer))
-        return proc.wait()
+        return proc.wait(), "".join(collected)
+
+    def read_state():
+        p = workdir / "terraform.tfstate"
+        return p.read_text(encoding="utf-8") if p.exists() else None
+
+    def rewrite(f: dict):
+        for name, content in f.items():
+            if name.endswith((".tf", ".tfvars")):
+                (workdir / name).write_text(content or "", encoding="utf-8")
 
     post_update(job_id, status="running", log_append=f"$ starting terraform {action}\n")
+    files = {k: v for k, v in (job.get("files") or {}).items() if k.endswith((".tf", ".tfvars"))}
 
     # 1. init
-    if stream(["terraform", "init", "-no-color", "-input=false"]) != 0:
+    if stream(["terraform", "init", "-no-color", "-input=false"])[0] != 0:
         post_update(job_id, status="error", error="terraform init failed")
         return
 
-    # 2. validate → AI-fix loop (apply only; destroy reuses the saved state)
-    if action != "destroy":
-        files = {k: v for k, v in (job.get("files") or {}).items() if k.endswith((".tf", ".tfvars"))}
-        for attempt in range(3):
-            rc, output = _capture(["terraform", "validate", "-no-color"], workdir, env)
-            post_update(job_id, log_append=scrub(f"\n$ terraform validate\n{output}\n"))
-            if rc == 0:
-                break
-            if attempt == 2:
-                post_update(job_id, log_append="[validate still failing after fixes — trying apply anyway]\n")
-                break
-            post_update(job_id, log_append="[validate failed — asking AI to fix…]\n")
-            fixed = request_fix(files, output)
-            if not fixed or fixed == files:
-                post_update(job_id, log_append="[no fix produced — continuing]\n")
-                break
-            files = fixed
-            for name, content in files.items():
-                if name.endswith((".tf", ".tfvars")):
-                    (workdir / name).write_text(content or "", encoding="utf-8")
-
-    # 3. apply / destroy
-    action_cmd = (
-        ["terraform", "destroy", "-auto-approve", "-no-color"]
-        if action == "destroy"
-        else ["terraform", "apply", "-auto-approve", "-no-color"]
-    )
-    if stream(action_cmd) != 0:
-        post_update(job_id, status="error", error=f"terraform {action} failed")
-        return
-
+    # Destroy: use the saved state directly, no fix loop.
     if action == "destroy":
-        post_update(job_id, status="destroyed", log_append="\n✓ destroy complete\n")
+        rc, _ = stream(["terraform", "destroy", "-auto-approve", "-no-color"])
+        if rc == 0:
+            post_update(job_id, status="destroyed", state=read_state(), log_append="\n✓ destroy complete\n")
+        else:
+            post_update(job_id, status="error", error="terraform destroy failed", state=read_state())
         return
 
-    # Collect outputs + final state for a successful apply.
-    outputs = {}
-    try:
-        out = subprocess.run(
-            ["terraform", "output", "-json"], cwd=workdir, env=env,
-            capture_output=True, text=True, timeout=60,
-        )
-        if out.returncode == 0 and out.stdout.strip():
-            outputs = json.loads(out.stdout)
-    except Exception:  # noqa: BLE001
-        pass
+    # 2. validate → AI-fix loop (config errors, before touching AWS)
+    for attempt in range(3):
+        rc, output = _capture(["terraform", "validate", "-no-color"], workdir, env)
+        post_update(job_id, log_append=scrub(f"\n$ terraform validate\n{output}\n"))
+        if rc == 0:
+            break
+        if attempt == 2:
+            post_update(job_id, log_append="[validate still failing after fixes — trying apply anyway]\n")
+            break
+        post_update(job_id, log_append="[validate failed — asking AI to fix…]\n")
+        fixed = request_fix(files, output)
+        if not fixed or fixed == files:
+            post_update(job_id, log_append="[no fix produced — continuing]\n")
+            break
+        files = fixed
+        rewrite(files)
 
-    state_path = workdir / "terraform.tfstate"
-    state = state_path.read_text(encoding="utf-8") if state_path.exists() else None
-
-    post_update(job_id, status="applied", outputs=outputs, state=state, log_append="\n✓ apply complete\n")
+    # 3. apply → AI-fix retry (apply-time errors validate can't catch). State is
+    #    saved after every attempt so partial resources can always be destroyed.
+    for attempt in range(3):
+        rc, output = stream(["terraform", "apply", "-auto-approve", "-no-color"])
+        state = read_state()
+        if rc == 0:
+            outputs = {}
+            try:
+                o = subprocess.run(
+                    ["terraform", "output", "-json"], cwd=workdir, env=env,
+                    capture_output=True, text=True, timeout=60,
+                )
+                if o.returncode == 0 and o.stdout.strip():
+                    outputs = json.loads(o.stdout)
+            except Exception:  # noqa: BLE001
+                pass
+            post_update(job_id, status="applied", outputs=outputs, state=state, log_append="\n✓ apply complete\n")
+            return
+        # apply failed — persist any partial state so it can be destroyed
+        post_update(job_id, state=state)
+        if attempt == 2:
+            post_update(job_id, status="error", error="terraform apply failed", state=state,
+                        log_append="\n[apply still failing after fixes — any partial resources are saved; use Destroy to clean up]\n")
+            return
+        post_update(job_id, log_append="\n[apply failed — asking AI to fix…]\n")
+        fixed = request_fix(files, output)
+        if not fixed or fixed == files:
+            post_update(job_id, status="error", error="terraform apply failed", state=state)
+            return
+        files = fixed
+        rewrite(files)
 
 
 def poll_once() -> bool:

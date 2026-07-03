@@ -106,7 +106,8 @@ AWS SPECIFIC RULES:
 13b. All generated HCL MUST be valid for the pinned provider version (AWS provider ~> 5.0) and pass `terraform validate`. Use only arguments and block types that exist in that provider version — never invent or use removed/deprecated ones.
 14. For Amazon Aurora, include aws_rds_cluster AND at least one aws_rds_cluster_instance (writer).
 15. For Amazon ElastiCache in a VPC, place clusters in private subnets and restrict ingress only from the ECS task/service security group on the cache port.
-16. For ECS Fargate behind an ALB, wire load_balancer on aws_ecs_service, target group, listener, and security groups so ALB can reach task ENIs on the container port."""
+16. For ECS Fargate behind an ALB, wire load_balancer on aws_ecs_service, target group, listener, and security groups so ALB can reach task ENIs on the container port.
+16a. For aws_instance launched into a VPC subnet, attach security groups via `vpc_security_group_ids = [...]` — NEVER `security_groups` (that is the EC2-Classic groupName parameter and is incompatible with subnet_id). Use `filter` (not `filters`) blocks inside data "aws_ami"."""
 
 _AZURE_RULES = """
 AZURE SPECIFIC RULES:
