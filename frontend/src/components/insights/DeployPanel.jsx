@@ -248,21 +248,61 @@ export default function DeployPanel({ data }) {
 
       {/* Destroy confirm */}
       {mode === "destroy-form" && (
-        <div className="mt-3 space-y-2.5">
-          <p className="rounded-lg border border-rose-400/25 bg-rose-500/10 p-2.5 text-[11px] leading-snug text-rose-200/90">
-            This will <b>permanently destroy</b> the deployed resources. Re-enter your keys and type
-            <b> DESTROY</b> to confirm.
-          </p>
+        <div className="mt-4 space-y-4 rounded-2xl border border-rose-500/25 bg-gradient-to-b from-rose-500/[0.07] to-transparent p-4 sm:p-5">
+          <div className="flex items-start gap-3">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-rose-500/15 text-rose-300 ring-1 ring-rose-400/25">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                <line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" />
+              </svg>
+            </span>
+            <div className="min-w-0">
+              <p className="text-base font-bold text-rose-100">Destroy this deployment</p>
+              <p className="mt-0.5 text-xs leading-relaxed text-rose-200/80">
+                This <b>permanently deletes</b> the created AWS resources. Re-enter your keys and type{" "}
+                <span className="rounded bg-rose-500/20 px-1 font-mono font-semibold text-rose-100">DESTROY</span>{" "}
+                to confirm.
+              </p>
+            </div>
+          </div>
+
           {KeyInputs}
-          <input className="input w-full py-1.5 text-xs font-mono" value={confirmText}
-            onChange={(e) => setConfirmText(e.target.value)} placeholder="Type DESTROY" />
-          <div className="flex gap-2">
-            <button type="button" onClick={onDestroy} disabled={busy}
-              className="btn-primary flex-1 justify-center bg-gradient-to-r from-rose-500 to-rose-600 py-2 text-xs disabled:opacity-60">
-              {busy ? "Starting…" : "Terraform destroy"}
+
+          <label className="block">
+            <span className="mb-1 block text-xs text-slate-400">Type <span className="font-mono text-rose-200">DESTROY</span> to confirm</span>
+            <input
+              className={`input w-full py-2.5 text-sm font-mono tracking-[0.3em] placeholder:tracking-normal ${
+                confirmText === "DESTROY"
+                  ? "border-emerald-400/50 focus:border-emerald-400"
+                  : confirmText
+                    ? "border-rose-400/50 focus:border-rose-400"
+                    : ""
+              }`}
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder="DESTROY"
+              autoComplete="off"
+            />
+          </label>
+
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={onDestroy}
+              disabled={busy || confirmText !== "DESTROY"}
+              className="btn flex-1 justify-center bg-gradient-to-r from-rose-500 to-rose-600 py-3 text-sm font-semibold text-white shadow-[0_8px_30px_-8px_rgba(244,63,94,0.6)] transition hover:from-rose-400 hover:to-rose-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M3 6h18" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" />
+              </svg>
+              {busy ? "Destroying…" : "Terraform destroy"}
             </button>
-            <button type="button" onClick={() => { wipeKeys(); setConfirmText(""); setMode("active"); setError(null); }}
-              className="btn-secondary justify-center py-2 px-3 text-xs">
+            <button
+              type="button"
+              onClick={() => { wipeKeys(); setConfirmText(""); setMode("active"); setError(null); }}
+              className="btn-secondary justify-center py-3 px-6 text-sm"
+            >
               Cancel
             </button>
           </div>

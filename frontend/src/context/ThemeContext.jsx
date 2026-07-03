@@ -1,32 +1,18 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect } from "react";
 
 const ThemeContext = createContext({ theme: "dark", toggle: () => {} });
 
+// Dark mode only — light mode was removed.
 export function ThemeProvider({ children }) {
-  const [theme, setTheme] = useState(() => {
-    try {
-      return localStorage.getItem("terrasketch.theme") || "dark";
-    } catch {
-      return "dark";
-    }
-  });
-
   useEffect(() => {
-    const html = document.documentElement;
-    if (theme === "light") {
-      html.classList.add("light");
-    } else {
-      html.classList.remove("light");
-    }
+    document.documentElement.classList.remove("light");
     try {
-      localStorage.setItem("terrasketch.theme", theme);
+      localStorage.setItem("terrasketch.theme", "dark");
     } catch {}
-  }, [theme]);
-
-  const toggle = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
+  }, []);
 
   return (
-    <ThemeContext.Provider value={{ theme, toggle }}>
+    <ThemeContext.Provider value={{ theme: "dark", toggle: () => {} }}>
       {children}
     </ThemeContext.Provider>
   );
