@@ -191,9 +191,11 @@ def run_terraform(job: dict) -> None:
             post_update(job_id, status="error", error="terraform destroy failed", state=read_state(), files=files)
         return
 
-    # 3. apply → AI-fix retry (apply-time errors validate can't catch). State is
-    #    saved after every attempt so partial resources can always be destroyed.
-    for attempt in range(3):
+    # 3. apply. First failure → a plain retry (many AWS errors are transient:
+    #    IAM/instance-profile propagation, eventual consistency, throttling).
+    #    Only if it still fails do we ask the AI to fix (avoids needless churn).
+    #    State is saved after every attempt so partial resources are destroyable.
+    for attempt in range(4):
         rc, output = stream(["terraform", "apply", "-auto-approve", "-no-color"])
         state = read_state()
         if rc == 0:
@@ -211,10 +213,15 @@ def run_terraform(job: dict) -> None:
             return
         # apply failed — persist partial state + current files so destroy uses the same (fixed) config
         post_update(job_id, state=state, files=files)
-        if attempt == 2:
+        if attempt == 3:
             post_update(job_id, status="error", error="terraform apply failed", state=state, files=files,
                         log_append="\n[apply still failing after fixes — any partial resources are saved; use Destroy to clean up]\n")
             return
+        if attempt == 0:
+            # First failure: retry as-is (transient issues usually clear on retry).
+            post_update(job_id, log_append="\n[apply failed — retrying in 15s (transient AWS issues usually clear on retry)…]\n")
+            time.sleep(15)
+            continue
         post_update(job_id, log_append="\n[apply failed — asking AI to fix…]\n")
         fixed = request_fix(files, output)
         if not fixed or fixed == files:
