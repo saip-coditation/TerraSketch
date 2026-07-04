@@ -214,6 +214,35 @@ def harden_rds_for_teardown(files: dict) -> dict:
     return {**files, "main.tf": result}
 
 
+def ensure_s3_force_destroy(files: dict) -> dict:
+    """Force `force_destroy = true` on S3 buckets so `terraform destroy` succeeds
+    even when the bucket has objects (e.g. CloudFront logs)."""
+    main = files.get("main.tf")
+    if not main or "aws_s3_bucket" not in main:
+        return files
+    pattern = re.compile(r'resource\s+"aws_s3_bucket"\s+"[^"]+"\s*\{')
+    result = main
+    for m in reversed(list(pattern.finditer(main))):
+        brace = main.index("{", m.start())
+        depth = 0
+        end = brace
+        for j in range(brace, len(main)):
+            if main[j] == "{":
+                depth += 1
+            elif main[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = j
+                    break
+        body = result[brace + 1 : end]
+        if re.search(r"\bforce_destroy\b", body):
+            body = re.sub(r"force_destroy\s*=\s*[^\n]+", "force_destroy = true", body)
+        else:
+            body = "\n  force_destroy = true" + body
+        result = result[: brace + 1] + body + result[end:]
+    return {**files, "main.tf": result}
+
+
 def prepare_files_for_deploy(files: dict, region: str) -> dict:
     """Make generated files deployable: substitute <REPLACE_*> placeholders with
     real, AWS-valid, unique values; force the provider region; and give any
@@ -247,8 +276,9 @@ def prepare_files_for_deploy(files: dict, region: str) -> dict:
     # Declare any common data sources referenced but not declared.
     out = ensure_data_sources(out)
 
-    # Force RDS to be destroyable (skip_final_snapshot / deletion_protection).
+    # Make resources destroyable: RDS/Aurora teardown flags + S3 force_destroy.
     out = harden_rds_for_teardown(out)
+    out = ensure_s3_force_destroy(out)
 
     return out
 
