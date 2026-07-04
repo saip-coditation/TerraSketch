@@ -161,23 +161,15 @@ def run_terraform(job: dict) -> None:
         post_update(job_id, status="error", error="terraform init failed")
         return
 
-    # Destroy: use the saved state directly, no fix loop.
-    if action == "destroy":
-        rc, _ = stream(["terraform", "destroy", "-auto-approve", "-no-color"])
-        if rc == 0:
-            post_update(job_id, status="destroyed", state=read_state(), log_append="\n✓ destroy complete\n")
-        else:
-            post_update(job_id, status="error", error="terraform destroy failed", state=read_state())
-        return
-
-    # 2. validate → AI-fix loop (config errors, before touching AWS)
+    # 2. validate → AI-fix loop. Config must be valid for BOTH apply and destroy
+    #    (destroy needs a parseable config even though it tears down from state).
     for attempt in range(3):
         rc, output = _capture(["terraform", "validate", "-no-color"], workdir, env)
         post_update(job_id, log_append=scrub(f"\n$ terraform validate\n{output}\n"))
         if rc == 0:
             break
         if attempt == 2:
-            post_update(job_id, log_append="[validate still failing after fixes — trying apply anyway]\n")
+            post_update(job_id, log_append="[validate still failing after fixes — continuing anyway]\n")
             break
         post_update(job_id, log_append="[validate failed — asking AI to fix…]\n")
         fixed = request_fix(files, output)
@@ -186,6 +178,15 @@ def run_terraform(job: dict) -> None:
             break
         files = fixed
         rewrite(files)
+
+    # Destroy: config is now valid → tear down using the saved state.
+    if action == "destroy":
+        rc, _ = stream(["terraform", "destroy", "-auto-approve", "-no-color"])
+        if rc == 0:
+            post_update(job_id, status="destroyed", state=read_state(), files=files, log_append="\n✓ destroy complete\n")
+        else:
+            post_update(job_id, status="error", error="terraform destroy failed", state=read_state(), files=files)
+        return
 
     # 3. apply → AI-fix retry (apply-time errors validate can't catch). State is
     #    saved after every attempt so partial resources can always be destroyed.
@@ -203,18 +204,18 @@ def run_terraform(job: dict) -> None:
                     outputs = json.loads(o.stdout)
             except Exception:  # noqa: BLE001
                 pass
-            post_update(job_id, status="applied", outputs=outputs, state=state, log_append="\n✓ apply complete\n")
+            post_update(job_id, status="applied", outputs=outputs, state=state, files=files, log_append="\n✓ apply complete\n")
             return
-        # apply failed — persist any partial state so it can be destroyed
-        post_update(job_id, state=state)
+        # apply failed — persist partial state + current files so destroy uses the same (fixed) config
+        post_update(job_id, state=state, files=files)
         if attempt == 2:
-            post_update(job_id, status="error", error="terraform apply failed", state=state,
+            post_update(job_id, status="error", error="terraform apply failed", state=state, files=files,
                         log_append="\n[apply still failing after fixes — any partial resources are saved; use Destroy to clean up]\n")
             return
         post_update(job_id, log_append="\n[apply failed — asking AI to fix…]\n")
         fixed = request_fix(files, output)
         if not fixed or fixed == files:
-            post_update(job_id, status="error", error="terraform apply failed", state=state)
+            post_update(job_id, status="error", error="terraform apply failed", state=state, files=files)
             return
         files = fixed
         rewrite(files)

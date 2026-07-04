@@ -110,7 +110,8 @@ AWS SPECIFIC RULES:
 16a. For aws_instance launched into a VPC subnet, attach security groups via `vpc_security_group_ids = [...]` — NEVER `security_groups` (that is the EC2-Classic groupName parameter and is incompatible with subnet_id). Use `filter` (not `filters`) blocks inside data "aws_ami".
 16b. Tear-down friendly: on aws_db_instance / aws_rds_cluster set `skip_final_snapshot = true` and `deletion_protection = false` for non-production, so the stack can be destroyed cleanly. Use small classes (db.t3.micro). Do NOT pin an unsupported `engine_version` — omit it or use a current major version (e.g. mysql "8.0").
 16c. RDS requires a db_subnet_group spanning subnets in at least TWO AZs, and an ALB requires subnets in at least TWO AZs — create subnets across two AZs accordingly.
-16d. For an EC2 IAM role, create aws_iam_role AND aws_iam_instance_profile, and set `iam_instance_profile` on the aws_instance."""
+16d. For an EC2 IAM role, create aws_iam_role AND aws_iam_instance_profile, and set `iam_instance_profile` on the aws_instance.
+16e. On aws_db_instance the database name argument is `db_name` (NOT `name`, which was removed) — use `db_name = var.db_name`. `identifier` is the instance id."""
 
 _AZURE_RULES = """
 AZURE SPECIFIC RULES:

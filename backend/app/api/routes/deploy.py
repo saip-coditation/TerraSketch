@@ -402,4 +402,7 @@ def worker_update(
         for key in ("status", "outputs", "state", "error"):
             if payload.get(key) is not None:
                 d[key] = payload[key]
+        # Persist the worker's (possibly AI-fixed) files so destroy uses the same config.
+        if isinstance(payload.get("files"), dict) and payload["files"]:
+            d["files"] = {**(d.get("files") or {}), **payload["files"]}
     return {"ok": True}
