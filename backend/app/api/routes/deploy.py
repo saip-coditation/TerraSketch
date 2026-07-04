@@ -18,7 +18,6 @@ import json
 import re
 import secrets
 import threading
-import time
 import uuid
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request, Response
@@ -32,13 +31,22 @@ from app.db import models
 
 router = APIRouter()
 
-_LOCK = threading.Lock()
-_DEPLOYMENTS: dict[str, dict] = {}
-_PUBLIC_FIELDS = ("id", "action", "status", "region", "outputs", "error", "logs", "created_at")
+# AWS keys live ONLY here (process memory), keyed by deployment id — never in the DB.
+_KEYS_LOCK = threading.Lock()
+_PENDING_KEYS: dict[str, dict] = {}
 
 
-def _public(d: dict) -> dict:
-    return {k: d.get(k) for k in _PUBLIC_FIELDS}
+def _public(d) -> dict:
+    return {
+        "id": d.id,
+        "action": d.action,
+        "status": d.status,
+        "region": d.region,
+        "outputs": d.outputs or {},
+        "error": d.error,
+        "logs": d.logs or "",
+        "created_at": d.created_at.isoformat() if d.created_at else None,
+    }
 
 
 def _require_worker(authorization: str | None) -> None:
@@ -322,59 +330,65 @@ def post_deploy(
     if not files:
         raise HTTPException(status_code=400, detail="Generation has no files to deploy")
 
-    # Make the generated files deployable: substitute <REPLACE_*> placeholders
-    # (region, names, CIDRs), force the provider region, and default any
-    # required variables.
+    # Make the generated files deployable: substitute <REPLACE_*> placeholders,
+    # force the provider region, default required variables, harden for teardown.
     files = prepare_files_for_deploy(files, payload.region)
 
-    did = str(uuid.uuid4())
-    with _LOCK:
-        _DEPLOYMENTS[did] = {
-            "id": did,
-            "generation_id": payload.generation_id,
-            "action": "apply",
-            "status": "queued",
-            "region": payload.region,
-            "files": files,
-            "state": None,
-            "outputs": {},
-            "logs": "",
-            "error": None,
-            "keys": {
-                "aws_access_key_id": payload.aws_access_key_id,
-                "aws_secret_access_key": payload.aws_secret_access_key,
-                "aws_session_token": payload.aws_session_token,
-            },
-            "created_at": time.time(),
+    dep = models.Deployment(
+        generation_id=payload.generation_id,
+        session_id=gen.session_id,
+        user_id=current_user.id if current_user else gen.user_id,
+        action="apply",
+        status="queued",
+        region=payload.region,
+        files=files,
+        logs="",
+        outputs={},
+    )
+    db.add(dep)
+    db.commit()
+    db.refresh(dep)
+
+    with _KEYS_LOCK:
+        _PENDING_KEYS[dep.id] = {
+            "aws_access_key_id": payload.aws_access_key_id,
+            "aws_secret_access_key": payload.aws_secret_access_key,
+            "aws_session_token": payload.aws_session_token,
         }
-    return {"deployment_id": did}
+    return {"deployment_id": dep.id}
 
 
 @router.get("/deploy/{deployment_id}", summary="Deployment status, logs and outputs")
-def get_deploy(deployment_id: str) -> dict:
-    with _LOCK:
-        d = _DEPLOYMENTS.get(deployment_id)
-        if not d:
-            raise HTTPException(status_code=404, detail="Deployment not found")
-        return _public(d)
+def get_deploy(deployment_id: str, db: Session = Depends(get_db)) -> dict:
+    dep = db.get(models.Deployment, deployment_id)
+    if not dep:
+        raise HTTPException(status_code=404, detail="Deployment not found")
+    return _public(dep)
 
 
 @router.post("/deploy/{deployment_id}/destroy", summary="Destroy a deployed stack")
 @limiter.limit(get_settings().RATE_LIMIT_GENERATE)
-def post_destroy(request: Request, deployment_id: str, payload: DestroyRequest) -> dict:
+def post_destroy(
+    request: Request,
+    deployment_id: str,
+    payload: DestroyRequest,
+    db: Session = Depends(get_db),
+) -> dict:
     if not payload.confirm:
         raise HTTPException(status_code=400, detail="Destroy must be confirmed.")
-    with _LOCK:
-        d = _DEPLOYMENTS.get(deployment_id)
-        if not d:
-            raise HTTPException(status_code=404, detail="Deployment not found")
-        if not d.get("state"):
-            raise HTTPException(status_code=400, detail="Nothing to destroy (no saved state).")
-        d["action"] = "destroy"
-        d["status"] = "queued"
-        d["error"] = None
-        d["logs"] = (d.get("logs") or "") + "\n--- destroy requested ---\n"
-        d["keys"] = {
+    dep = db.get(models.Deployment, deployment_id)
+    if not dep:
+        raise HTTPException(status_code=404, detail="Deployment not found")
+    if not dep.state:
+        raise HTTPException(status_code=400, detail="Nothing to destroy (no saved state).")
+    dep.action = "destroy"
+    dep.status = "queued"
+    dep.error = None
+    dep.logs = (dep.logs or "") + "\n--- destroy requested ---\n"
+    db.commit()
+
+    with _KEYS_LOCK:
+        _PENDING_KEYS[dep.id] = {
             "aws_access_key_id": payload.aws_access_key_id,
             "aws_secret_access_key": payload.aws_secret_access_key,
             "aws_session_token": payload.aws_session_token,
@@ -385,24 +399,38 @@ def post_destroy(request: Request, deployment_id: str, payload: DestroyRequest) 
 # ── Worker-facing (token-authenticated) ───────────────────────────────────────
 
 @router.get("/worker/next-job", summary="Worker: claim the next queued job")
-def worker_next_job(authorization: str | None = Header(default=None)):
+def worker_next_job(
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
     _require_worker(authorization)
-    with _LOCK:
-        for d in sorted(_DEPLOYMENTS.values(), key=lambda x: x["created_at"]):
-            if d["status"] == "queued":
-                d["status"] = "running"
-                keys = d.get("keys") or {}
-                d["keys"] = None  # served once → drop from memory
-                return {
-                    "id": d["id"],
-                    "action": d["action"],
-                    "region": d["region"],
-                    "files": d["files"],
-                    "state": d.get("state"),
-                    "aws_access_key_id": keys.get("aws_access_key_id", ""),
-                    "aws_secret_access_key": keys.get("aws_secret_access_key", ""),
-                    "aws_session_token": keys.get("aws_session_token"),
-                }
+    queued = (
+        db.query(models.Deployment)
+        .filter(models.Deployment.status == "queued")
+        .order_by(models.Deployment.created_at)
+        .all()
+    )
+    for dep in queued:
+        with _KEYS_LOCK:
+            keys = _PENDING_KEYS.pop(dep.id, None)
+        if not keys:
+            # Keys were lost (server restarted between submit and pickup) — can't run.
+            dep.status = "error"
+            dep.error = "Credentials no longer available (server restarted) — please re-deploy."
+            db.commit()
+            continue
+        dep.status = "running"
+        db.commit()
+        return {
+            "id": dep.id,
+            "action": dep.action,
+            "region": dep.region,
+            "files": dep.files,
+            "state": dep.state,
+            "aws_access_key_id": keys.get("aws_access_key_id", ""),
+            "aws_secret_access_key": keys.get("aws_secret_access_key", ""),
+            "aws_session_token": keys.get("aws_session_token"),
+        }
     return Response(status_code=204)
 
 
@@ -420,19 +448,20 @@ def worker_update(
     job_id: str,
     payload: dict = Body(default={}),
     authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
 ) -> dict:
     _require_worker(authorization)
-    with _LOCK:
-        d = _DEPLOYMENTS.get(job_id)
-        if not d:
-            raise HTTPException(status_code=404, detail="Job not found")
-        appended = payload.get("log_append")
-        if appended:
-            d["logs"] = ((d.get("logs") or "") + appended)[-200_000:]
-        for key in ("status", "outputs", "state", "error"):
-            if payload.get(key) is not None:
-                d[key] = payload[key]
-        # Persist the worker's (possibly AI-fixed) files so destroy uses the same config.
-        if isinstance(payload.get("files"), dict) and payload["files"]:
-            d["files"] = {**(d.get("files") or {}), **payload["files"]}
+    dep = db.get(models.Deployment, job_id)
+    if not dep:
+        raise HTTPException(status_code=404, detail="Job not found")
+    appended = payload.get("log_append")
+    if appended:
+        dep.logs = ((dep.logs or "") + appended)[-200_000:]
+    for key in ("status", "outputs", "state", "error"):
+        if payload.get(key) is not None:
+            setattr(dep, key, payload[key])
+    # Persist the worker's (possibly AI-fixed) files so destroy uses the same config.
+    if isinstance(payload.get("files"), dict) and payload["files"]:
+        dep.files = {**(dep.files or {}), **payload["files"]}
+    db.commit()
     return {"ok": True}

@@ -111,3 +111,31 @@ class UserPreference(Base):
     dismissed_findings: Mapped[list | None] = mapped_column(JSON, nullable=True)
     custom: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class Deployment(Base):
+    """A deploy job (apply/destroy). State + files are persisted so a server
+    restart never orphans a running stack. AWS keys are NEVER stored here —
+    they stay in the backend process memory only."""
+
+    __tablename__ = "deployments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    generation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    session_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+    action: Mapped[str] = mapped_column(String(20), default="apply", nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="queued", nullable=False, index=True)
+    region: Mapped[str] = mapped_column(String(40), default="us-east-1", nullable=False)
+
+    files: Mapped[dict] = mapped_column(JSON, nullable=False)
+    state: Mapped[str | None] = mapped_column(Text, nullable=True)
+    outputs: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    logs: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
