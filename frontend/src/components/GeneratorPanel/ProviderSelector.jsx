@@ -12,7 +12,7 @@ const providers = [
 
 export default function ProviderSelector({ value, onChange }) {
   return (
-    <div className="grid grid-cols-1 gap-2 sm:max-w-xs sm:gap-3">
+    <div className="mx-auto grid w-full max-w-sm grid-cols-1 gap-2 sm:gap-3">
       {providers.map((p) => {
         const active = value === p.id;
         return (
