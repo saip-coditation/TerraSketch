@@ -115,7 +115,8 @@ AWS SPECIFIC RULES:
 16f. Amazon Aurora: use aws_rds_cluster (engine "aurora-mysql" or "aurora-postgresql") WITH at least one aws_rds_cluster_instance; set skip_final_snapshot = true and deletion_protection = false on the cluster so it can be destroyed. Use a db_subnet_group across 2 AZs.
 16g. ECS Fargate: aws_ecs_cluster + aws_ecs_task_definition (network_mode "awsvpc", requires_compatibilities ["FARGATE"], cpu/memory set, a real public container image such as "public.ecr.aws/nginx/nginx:latest") + aws_ecs_service (launch_type "FARGATE", network_configuration with subnets + security groups). If behind an ALB, the target group must use target_type = "ip".
 16h. ElastiCache: create an aws_elasticache_subnet_group across the private subnets and a security group; allow the cache port only from the app/ECS security group.
-16i. CloudFront + S3 origin: use Origin Access Control (OAC), an aws_s3_bucket_policy granting the distribution access, and keep the bucket private. Do not set an ACL. Every referenced resource must exist in the code."""
+16i. CloudFront + S3 origin: use Origin Access Control (OAC), an aws_s3_bucket_policy granting the distribution access, and keep the bucket private. Do not set an ACL. Every referenced resource must exist in the code.
+16j. Avoid name collisions on re-deploy: prefer `name_prefix` / `identifier_prefix` over a fixed `name`/`identifier` where the resource supports it (aws_lb, aws_lb_target_group, aws_db_subnet_group, aws_security_group, aws_iam_role, aws_db_instance), or append a random suffix (hashicorp/random `random_id`). Never hardcode a fixed name (e.g. "dev-db-subnet-group") that would clash if the stack is deployed twice."""
 
 _AZURE_RULES = """
 AZURE SPECIFIC RULES:
