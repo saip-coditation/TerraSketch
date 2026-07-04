@@ -178,6 +178,9 @@ def run_terraform(job: dict) -> None:
             break
         files = fixed
         rewrite(files)
+        # A fix may introduce a new provider (e.g. random) — re-init so the lock
+        # file stays consistent, otherwise apply fails on "Inconsistent dependency lock file".
+        stream(["terraform", "init", "-upgrade", "-no-color", "-input=false"])
 
     # Destroy: config is now valid → tear down using the saved state.
     if action == "destroy":
@@ -219,6 +222,9 @@ def run_terraform(job: dict) -> None:
             return
         files = fixed
         rewrite(files)
+        # A fix may introduce a new provider (e.g. random) — re-init so the lock
+        # file stays consistent, otherwise apply fails on "Inconsistent dependency lock file".
+        stream(["terraform", "init", "-upgrade", "-no-color", "-input=false"])
 
 
 def poll_once() -> bool:
