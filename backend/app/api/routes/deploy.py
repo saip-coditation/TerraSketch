@@ -284,6 +284,29 @@ def uniquify_deployment(files: dict) -> dict:
     return files
 
 
+def repair_var_type_parens(files: dict) -> dict:
+    """Fix a common LLM syntax slip: an unclosed type constraint like
+    `type = list(string` (missing `)`). Terraform hits this at *init*, and the
+    worker bails on init failure before its validate/AI-fix loop can run — so
+    this error would otherwise dead-end a deploy AND block destroy (init parses
+    the config first). Conservative: only touches single-line `type =` lines
+    whose parentheses are unbalanced and that don't look like a continuation."""
+    out: dict[str, str] = {}
+    for name, content in (files or {}).items():
+        if name.endswith(".tf") and content:
+            lines = content.split("\n")
+            for i, line in enumerate(lines):
+                if re.match(r"\s*type\s*=", line):
+                    opens = line.count("(")
+                    closes = line.count(")")
+                    # unbalanced and not a multi-line type (list(object({ ... ))
+                    if opens > closes and not line.rstrip().endswith((",", "(", "{")):
+                        lines[i] = line.rstrip() + ")" * (opens - closes)
+            content = "\n".join(lines)
+        out[name] = content
+    return out
+
+
 def prepare_files_for_deploy(files: dict, region: str) -> dict:
     """Make generated files deployable: substitute <REPLACE_*> placeholders with
     real, AWS-valid, unique values; force the provider region; and give any
@@ -323,6 +346,10 @@ def prepare_files_for_deploy(files: dict, region: str) -> dict:
     # Make resources destroyable: RDS/Aurora teardown flags + S3 force_destroy.
     out = harden_rds_for_teardown(out)
     out = ensure_s3_force_destroy(out)
+
+    # Last: repair unclosed `type = list(string` constraints so `terraform init`
+    # (which runs before the worker's validate/AI-fix loop) doesn't dead-end.
+    out = repair_var_type_parens(out)
 
     return out
 

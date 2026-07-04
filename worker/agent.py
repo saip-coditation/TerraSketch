@@ -156,9 +156,22 @@ def run_terraform(job: dict) -> None:
     post_update(job_id, status="running", log_append=f"$ starting terraform {action}\n")
     files = {k: v for k, v in (job.get("files") or {}).items() if k.endswith((".tf", ".tfvars"))}
 
-    # 1. init
-    if stream(["terraform", "init", "-no-color", "-input=false"])[0] != 0:
-        post_update(job_id, status="error", error="terraform init failed")
+    # 1. init. A config *syntax* error (e.g. an unclosed `list(string`) fails
+    #    init before validate can run, so on failure ask the AI to repair the
+    #    config and re-init before giving up — otherwise the job dead-ends here.
+    rc, output = stream(["terraform", "init", "-no-color", "-input=false"])
+    for _ in range(2):
+        if rc == 0:
+            break
+        post_update(job_id, log_append="[init failed — asking AI to fix config…]\n")
+        fixed = request_fix(files, output)
+        if not fixed or fixed == files:
+            break
+        files = fixed
+        rewrite(files)
+        rc, output = stream(["terraform", "init", "-no-color", "-input=false"])
+    if rc != 0:
+        post_update(job_id, status="error", error="terraform init failed", files=files)
         return
 
     # 2. validate → AI-fix loop. Config must be valid for BOTH apply and destroy
