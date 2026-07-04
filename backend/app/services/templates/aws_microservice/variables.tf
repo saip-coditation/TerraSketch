@@ -8,19 +8,10 @@ variable "name_prefix" {
   type        = string
 }
 
-variable "vpc_id" {
-  description = "VPC ID"
+variable "vpc_cidr" {
+  description = "CIDR block for the VPC the stack creates"
   type        = string
-}
-
-variable "public_subnet_ids" {
-  description = "Public subnets for ALB"
-  type        = list(string)
-}
-
-variable "private_subnet_ids" {
-  description = "Private subnets for ECS, Aurora, ElastiCache"
-  type        = list(string)
+  default     = "10.0.0.0/16"
 }
 
 variable "alb_ingress_cidr_blocks" {
@@ -68,6 +59,18 @@ variable "ecs_desired_count" {
 variable "redis_node_type" {
   type    = string
   default = "cache.t4g.micro"
+}
+
+variable "redis_engine_version" {
+  description = "Redis engine version (must match the parameter group family)"
+  type        = string
+  default     = "7.1"
+}
+
+variable "redis_parameter_group_name" {
+  description = "ElastiCache parameter group (family must match the engine version)"
+  type        = string
+  default     = "default.redis7"
 }
 
 variable "aurora_engine_version" {

@@ -97,9 +97,10 @@ class GenerationPipeline:
         if canon_applied:
             resources_identified = canonical_resources_list()
             usage_instructions = (
-                "Canonical template applied for full diagram fidelity. "
-                "Create terraform.tfvars with: region, name_prefix, vpc_id, public_subnet_ids, "
-                "private_subnet_ids, s3_bucket_name, container_image, db_password. "
+                "Canonical template applied for full diagram fidelity. The stack is self-contained "
+                "(creates its own VPC, subnets, internet gateway and routing). "
+                "Create terraform.tfvars with: s3_bucket_name, container_image, db_password "
+                "(region and name_prefix optional). "
                 "CloudFront default behavior → S3 (OAC). Paths matching api_path_pattern (default /api/*) "
                 "→ ALB → ECS. ElastiCache and Aurora are reachable only from ECS security groups. "
                 "Run: terraform init && terraform plan."

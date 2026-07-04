@@ -55,12 +55,10 @@ def get_canonical_microservice_files(*, environment: str) -> dict[str, str]:
     """Return the four-file bundle; caller sets name_prefix via tfvars."""
     env_slug = re.sub(r"[^a-z0-9-]", "-", environment.lower().strip()) or "dev"
     defaults_comment = (
-        f"# Suggested terraform.tfvars starter (edit vpc, subnets, bucket, image, db_password):\n"
+        f"# Suggested terraform.tfvars starter (edit bucket, image, db_password):\n"
+        f"# The stack creates its own VPC/subnets — no vpc_id/subnet_ids needed.\n"
         f'# region = "us-east-1"\n'
         f'# name_prefix = "terrasketch-{env_slug}"\n'
-        f'# vpc_id = "vpc-..."\n'
-        f'# public_subnet_ids  = ["subnet-...", "subnet-..."]\n'
-        f'# private_subnet_ids = ["subnet-...", "subnet-..."]\n'
         f'# s3_bucket_name = "my-unique-static-bucket-{env_slug}"\n'
         f'# container_image = "public.ecr.aws/docker/library/nginx:latest"\n'
         f'# db_password = "CHANGE_ME"\n'
@@ -112,8 +110,9 @@ def maybe_replace_with_canonical_microservice(
         "The LLM output has been replaced with a validated production template to ensure "
         "all wiring is correct. To use the raw LLM output instead, switch to v2 generation "
         "which does not apply canonical overrides.",
-        "Provide vpc_id, public_subnet_ids, private_subnet_ids, s3_bucket_name, "
-        "container_image, and db_password via terraform.tfvars.",
+        "The stack is self-contained (creates its own VPC, subnets, internet gateway "
+        "and routing). Provide s3_bucket_name, container_image, and db_password via "
+        "terraform.tfvars; everything else has a sensible default.",
     ]
     return canonical, notes
 

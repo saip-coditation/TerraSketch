@@ -4,6 +4,62 @@
 # Matches typical "Microservice" reference architecture diagrams.
 # -----------------------------------------------------------------------------
 
+# --- Networking: self-contained VPC across two AZs ---
+# The stack creates its own VPC so it deploys cleanly with no external inputs.
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
+resource "aws_vpc" "main" {
+  cidr_block           = var.vpc_cidr
+  enable_dns_support   = true
+  enable_dns_hostnames = true
+  tags                 = { Name = "${var.name_prefix}-vpc" }
+}
+
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+  tags   = { Name = "${var.name_prefix}-igw" }
+}
+
+# Public subnets host the internet-facing ALB.
+resource "aws_subnet" "public" {
+  count                   = 2
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = cidrsubnet(var.vpc_cidr, 8, count.index)
+  availability_zone       = data.aws_availability_zones.available.names[count.index]
+  map_public_ip_on_launch = true
+  tags                    = { Name = "${var.name_prefix}-public-${count.index}" }
+}
+
+# Private subnets host ECS tasks, Aurora and ElastiCache.
+resource "aws_subnet" "private" {
+  count             = 2
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index + 2)
+  availability_zone = data.aws_availability_zones.available.names[count.index]
+  tags              = { Name = "${var.name_prefix}-private-${count.index}" }
+}
+
+# Public route table → internet gateway. Without this the ALB cannot be created
+# ("VPC has no internet gateway").
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
+
+  tags = { Name = "${var.name_prefix}-public-rt" }
+}
+
+resource "aws_route_table_association" "public" {
+  count          = 2
+  subnet_id      = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public.id
+}
+
 # --- IAM: ECS task execution ---
 resource "aws_iam_role" "ecs_execution" {
   name = "${var.name_prefix}-ecs-exec"
@@ -27,7 +83,7 @@ resource "aws_iam_role_policy_attachment" "ecs_execution_managed" {
 resource "aws_security_group" "alb" {
   name        = "${var.name_prefix}-alb"
   description = "HTTP/HTTPS from internet to ALB"
-  vpc_id      = var.vpc_id
+  vpc_id      = aws_vpc.main.id
 
   ingress {
     description = "HTTP"
@@ -56,7 +112,7 @@ resource "aws_security_group" "alb" {
 resource "aws_security_group" "ecs_tasks" {
   name        = "${var.name_prefix}-ecs"
   description = "Traffic from ALB to ECS tasks"
-  vpc_id      = var.vpc_id
+  vpc_id      = aws_vpc.main.id
 
   ingress {
     description     = "App port from ALB"
@@ -77,7 +133,7 @@ resource "aws_security_group" "ecs_tasks" {
 resource "aws_security_group" "elasticache" {
   name        = "${var.name_prefix}-elasticache"
   description = "Redis from ECS tasks only"
-  vpc_id      = var.vpc_id
+  vpc_id      = aws_vpc.main.id
 
   ingress {
     description     = "Redis"
@@ -98,7 +154,7 @@ resource "aws_security_group" "elasticache" {
 resource "aws_security_group" "aurora" {
   name        = "${var.name_prefix}-aurora"
   description = "MySQL/Aurora from ECS tasks only"
-  vpc_id      = var.vpc_id
+  vpc_id      = aws_vpc.main.id
 
   ingress {
     description     = "Aurora MySQL"
@@ -150,14 +206,14 @@ resource "aws_lb" "app" {
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
-  subnets            = var.public_subnet_ids
+  subnets            = aws_subnet.public[*].id
 }
 
 resource "aws_lb_target_group" "app" {
   name        = "${var.name_prefix}-tg"
   port        = var.container_port
   protocol    = "HTTP"
-  vpc_id      = var.vpc_id
+  vpc_id      = aws_vpc.main.id
   target_type = "ip"
 
   health_check {
@@ -227,7 +283,7 @@ resource "aws_ecs_service" "app" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = var.private_subnet_ids
+    subnets          = aws_subnet.private[*].id
     security_groups  = [aws_security_group.ecs_tasks.id]
     assign_public_ip = false
   }
@@ -244,15 +300,16 @@ resource "aws_ecs_service" "app" {
 # --- ElastiCache Redis ---
 resource "aws_elasticache_subnet_group" "redis" {
   name       = "${var.name_prefix}-redis-subnet"
-  subnet_ids = var.private_subnet_ids
+  subnet_ids = aws_subnet.private[*].id
 }
 
 resource "aws_elasticache_cluster" "redis" {
   cluster_id           = "${var.name_prefix}-redis"
   engine               = "redis"
+  engine_version       = var.redis_engine_version
   node_type            = var.redis_node_type
   num_cache_nodes      = 1
-  parameter_group_name = "default.redis6.x"
+  parameter_group_name = var.redis_parameter_group_name
   subnet_group_name    = aws_elasticache_subnet_group.redis.name
   security_group_ids   = [aws_security_group.elasticache.id]
   port                 = 6379
@@ -261,7 +318,7 @@ resource "aws_elasticache_cluster" "redis" {
 # --- Aurora MySQL ---
 resource "aws_db_subnet_group" "aurora" {
   name       = "${var.name_prefix}-aurora-subnet"
-  subnet_ids = var.private_subnet_ids
+  subnet_ids = aws_subnet.private[*].id
 }
 
 resource "aws_rds_cluster" "aurora" {
