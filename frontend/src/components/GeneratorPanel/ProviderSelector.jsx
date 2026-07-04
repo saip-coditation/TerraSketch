@@ -1,5 +1,6 @@
 import React from "react";
 
+// AWS only — Azure/GCP are hidden while the product focuses on AWS deploys.
 const providers = [
   {
     id: "aws",
@@ -7,23 +8,11 @@ const providers = [
     accent: "from-orange-400 to-amber-500",
     initials: "AWS",
   },
-  {
-    id: "azure",
-    label: "Azure",
-    accent: "from-sky-400 to-blue-600",
-    initials: "AZ",
-  },
-  {
-    id: "gcp",
-    label: "Google Cloud",
-    accent: "from-rose-400 to-red-500",
-    initials: "GCP",
-  },
 ];
 
 export default function ProviderSelector({ value, onChange }) {
   return (
-    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-3">
+    <div className="grid grid-cols-1 gap-2 sm:max-w-xs sm:gap-3">
       {providers.map((p) => {
         const active = value === p.id;
         return (

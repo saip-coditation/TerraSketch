@@ -50,7 +50,8 @@ const SCALE_TIERS = [
 ];
 
 export default function GeneratorPanel({ onSubmit, loading, prefill = null }) {
-  const [provider, setProvider] = useState(prefill?.provider || "aws");
+  // AWS only for now — ignore any non-AWS prefill/detected provider.
+  const [provider, setProvider] = useState("aws");
   const [environment, setEnvironment] = useState(prefill?.environment || "dev");
   const [architecturePreset, setArchitecturePreset] = useState("auto");
   const [tab, setTab] = useState(prefill?.inputType === "text" || prefill?.text ? "text" : "image");
@@ -75,10 +76,9 @@ export default function GeneratorPanel({ onSubmit, loading, prefill = null }) {
     }
   }, [tab, voice.stop, voice.setHint]);
 
-  // Auto-select provider when draw.io/excalidraw detects one
+  // AWS only for now — keep provider fixed even if a diagram detects another cloud.
   const handleImportParsed = (parsed) => {
     setImportData(parsed);
-    if (parsed?.provider) setProvider(parsed.provider);
   };
 
   const isImageOnlyFile = file?.type?.startsWith("image/");
