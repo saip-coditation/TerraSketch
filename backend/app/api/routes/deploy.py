@@ -251,6 +251,39 @@ def ensure_s3_force_destroy(files: dict) -> dict:
     return {**files, "main.tf": result}
 
 
+def uniquify_deployment(files: dict) -> dict:
+    """Append a per-deploy suffix to the naming-prefix variable so every deploy
+    uses unique resource names. This prevents collisions with leftovers AND means
+    everything a deploy creates lives in its own state — so destroy removes it all
+    (no orphans from AI-fix renames or name clashes)."""
+    vt = files.get("variables.tf")
+    if not vt:
+        return files
+    suffix = uuid.uuid4().hex[:6]
+    for varname in ("name_prefix", "project_name", "project", "app_name", "prefix", "environment", "name"):
+        m = re.search(rf'variable\s+"{varname}"\s*\{{', vt)
+        if not m:
+            continue
+        brace = vt.index("{", m.start())
+        depth = 0
+        end = brace
+        for j in range(brace, len(vt)):
+            if vt[j] == "{":
+                depth += 1
+            elif vt[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = j
+                    break
+        body = vt[brace + 1 : end]
+        dm = re.search(r'default\s*=\s*"([^"]*)"', body)
+        if dm and dm.group(1) and not dm.group(1).endswith(suffix):
+            new_default = f"{dm.group(1)}-{suffix}"
+            new_body = body[: dm.start(1)] + new_default + body[dm.end(1) :]
+            return {**files, "variables.tf": vt[: brace + 1] + new_body + vt[end:]}
+    return files
+
+
 def prepare_files_for_deploy(files: dict, region: str) -> dict:
     """Make generated files deployable: substitute <REPLACE_*> placeholders with
     real, AWS-valid, unique values; force the provider region; and give any
@@ -276,6 +309,9 @@ def prepare_files_for_deploy(files: dict, region: str) -> dict:
         out["providers.tf"] = re.sub(
             r'region\s*=\s*"[^"]*"', f'region = "{region}"', out["providers.tf"], count=1
         )
+
+    # Unique per-deploy naming prefix → no collisions, and destroy owns everything.
+    out = uniquify_deployment(out)
 
     # Fill any required (no-default) variables so apply doesn't fail.
     if out.get("variables.tf"):
