@@ -179,6 +179,41 @@ def fix_terraform_files(files: dict, error: str) -> dict:
     return out
 
 
+def harden_rds_for_teardown(files: dict) -> dict:
+    """Force RDS to be destroyable: skip_final_snapshot=true, deletion_protection=false.
+    Otherwise `terraform destroy` fails on RDS and leaves a costly orphan."""
+    main = files.get("main.tf")
+    if not main or ("aws_db_instance" not in main and "aws_rds_cluster" not in main):
+        return files
+
+    pattern = re.compile(r'resource\s+"(?:aws_db_instance|aws_rds_cluster)"\s+"[^"]+"\s*\{')
+    result = main
+    for m in reversed(list(pattern.finditer(main))):
+        brace = main.index("{", m.start())
+        depth = 0
+        end = brace
+        for j in range(brace, len(main)):
+            if main[j] == "{":
+                depth += 1
+            elif main[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = j
+                    break
+        body = result[brace + 1 : end]
+        if re.search(r"\bskip_final_snapshot\b", body):
+            body = re.sub(r"skip_final_snapshot\s*=\s*[^\n]+", "skip_final_snapshot = true", body)
+        else:
+            body = "\n  skip_final_snapshot = true" + body
+        if re.search(r"\bdeletion_protection\b", body):
+            body = re.sub(r"deletion_protection\s*=\s*[^\n]+", "deletion_protection = false", body)
+        else:
+            body = "\n  deletion_protection = false" + body
+        result = result[: brace + 1] + body + result[end:]
+
+    return {**files, "main.tf": result}
+
+
 def prepare_files_for_deploy(files: dict, region: str) -> dict:
     """Make generated files deployable: substitute <REPLACE_*> placeholders with
     real, AWS-valid, unique values; force the provider region; and give any
@@ -211,6 +246,9 @@ def prepare_files_for_deploy(files: dict, region: str) -> dict:
 
     # Declare any common data sources referenced but not declared.
     out = ensure_data_sources(out)
+
+    # Force RDS to be destroyable (skip_final_snapshot / deletion_protection).
+    out = harden_rds_for_teardown(out)
 
     return out
 
