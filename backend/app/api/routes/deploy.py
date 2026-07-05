@@ -146,6 +146,25 @@ def ensure_data_sources(files: dict) -> dict:
         declared = re.search(rf'data\s+"{dtype}"\s+"{dname}"', all_text)
         if ref in all_text and not declared:
             additions.append(block)
+    # aws_ami is referenced with a per-config name (amazon_linux, ami, al2023…)
+    # and needs filter/owners args, so it can't be a fixed entry above. Inject a
+    # standard Amazon Linux 2023 lookup for any undeclared data.aws_ami.<name>.
+    for dname in dict.fromkeys(re.findall(r"data\.aws_ami\.([A-Za-z0-9_]+)", all_text)):
+        if not re.search(rf'data\s+"aws_ami"\s+"{dname}"', all_text):
+            additions.append(
+                f'data "aws_ami" "{dname}" {{\n'
+                "  most_recent = true\n"
+                '  owners      = ["amazon"]\n'
+                "  filter {\n"
+                '    name   = "name"\n'
+                '    values = ["al2023-ami-*-x86_64"]\n'
+                "  }\n"
+                "  filter {\n"
+                '    name   = "architecture"\n'
+                '    values = ["x86_64"]\n'
+                "  }\n"
+                "}"
+            )
     if additions and files.get("main.tf") is not None:
         merged = files["main.tf"].rstrip() + "\n\n" + "\n\n".join(additions) + "\n"
         files = {**files, "main.tf": merged}
