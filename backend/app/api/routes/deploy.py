@@ -323,6 +323,10 @@ def prepare_files_for_deploy(files: dict, region: str) -> dict:
         c = re.sub(r"<REPLACE_[A-Z0-9_]*(?:AZ|AVAILABILITY)[A-Z0-9_]*>", f"{region}a", c)
         # secrets/passwords → a strong generated value (so RDS etc. apply)
         c = re.sub(r"<REPLACE_[A-Z0-9_]*(?:PASSWORD|SECRET|PASS|PWD)[A-Z0-9_]*>", password, c)
+        # DB master usernames must be alphanumeric (no hyphens) and start with a
+        # letter — the safe_name (terrasketch-demo-<hex>) is an *invalid* RDS
+        # username, so substitute a valid one before the generic catch-all.
+        c = re.sub(r"<REPLACE_[A-Z0-9_]*USER(?:NAME)?[A-Z0-9_]*>", "dbadmin", c)
         # any remaining placeholder → a safe, unique name
         c = re.sub(r"<REPLACE_[A-Z0-9_]+>", safe_name, c)
         out[name] = c
