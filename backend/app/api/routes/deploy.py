@@ -270,6 +270,74 @@ def ensure_s3_force_destroy(files: dict) -> dict:
     return {**files, "main.tf": result}
 
 
+def _block_end(text: str, open_brace: int) -> int:
+    """Index of the matching '}' for the '{' at open_brace."""
+    depth = 0
+    for j in range(open_brace, len(text)):
+        if text[j] == "{":
+            depth += 1
+        elif text[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return j
+    return len(text) - 1
+
+
+def fix_instance_vpc_security_groups(files: dict) -> dict:
+    """In a VPC, aws_instance must use vpc_security_group_ids (SG *IDs*), not
+    security_groups (EC2-Classic group *names*) — otherwise apply fails with
+    'InvalidParameterCombination: The parameter groupName cannot be used with
+    the parameter subnet'. Rewrite security_groups -> vpc_security_group_ids on
+    any aws_instance that sets a subnet_id, mapping hardcoded SG names and
+    aws_security_group.X.name refs to the SG's .id. If any element can't be
+    resolved to an id, leave the block untouched (the AI-fix handles it)."""
+    main = files.get("main.tf")
+    if not main or 'resource "aws_instance"' not in main or "security_groups" not in main:
+        return files
+
+    # Map each aws_security_group's hardcoded `name` -> its local resource name.
+    name_to_local: dict[str, str] = {}
+    for m in re.finditer(r'resource\s+"aws_security_group"\s+"([A-Za-z0-9_]+)"\s*\{', main):
+        ob = main.index("{", m.start())
+        body = main[ob : _block_end(main, ob)]
+        nm = re.search(r'\bname\s*=\s*"([^"]+)"', body)
+        if nm:
+            name_to_local[nm.group(1)] = m.group(1)
+
+    def to_id(elem: str):
+        elem = elem.strip()
+        if not elem:
+            return ""
+        if re.fullmatch(r"aws_security_group\.[A-Za-z0-9_]+\.id", elem):
+            return elem
+        nm = re.fullmatch(r"aws_security_group\.([A-Za-z0-9_]+)\.name", elem)
+        if nm:
+            return f"aws_security_group.{nm.group(1)}.id"
+        lit = re.fullmatch(r'"([^"]+)"', elem)
+        if lit and lit.group(1) in name_to_local:
+            return f"aws_security_group.{name_to_local[lit.group(1)]}.id"
+        return None  # can't safely convert → skip this block
+
+    result = main
+    for m in reversed(list(re.finditer(r'resource\s+"aws_instance"\s+"[A-Za-z0-9_]+"\s*\{', main))):
+        ob = main.index("{", m.start())
+        eb = _block_end(main, ob)
+        body = main[ob : eb + 1]
+        if "subnet_id" not in body:
+            continue
+        sgm = re.search(r"(\n[ \t]*)security_groups([ \t]*)=([ \t]*)\[([^\]]*)\]", body)
+        if not sgm:
+            continue
+        elems = [e for e in (x.strip() for x in sgm.group(4).split(",")) if e]
+        converted = [to_id(e) for e in elems]
+        if any(c is None for c in converted):
+            continue  # unresolved element — leave to the AI-fix
+        new_attr = f"{sgm.group(1)}vpc_security_group_ids = [{', '.join(converted)}]"
+        new_body = body[: sgm.start()] + new_attr + body[sgm.end() :]
+        result = result[:ob] + new_body + result[eb + 1 :]
+    return {**files, "main.tf": result}
+
+
 def uniquify_deployment(files: dict) -> dict:
     """Append a per-deploy suffix to the naming-prefix variable so every deploy
     uses unique resource names. This prevents collisions with leftovers AND means
@@ -369,6 +437,9 @@ def prepare_files_for_deploy(files: dict, region: str) -> dict:
     # Make resources destroyable: RDS/Aurora teardown flags + S3 force_destroy.
     out = harden_rds_for_teardown(out)
     out = ensure_s3_force_destroy(out)
+
+    # VPC instances need vpc_security_group_ids (IDs), not security_groups (names).
+    out = fix_instance_vpc_security_groups(out)
 
     # Last: repair unclosed `type = list(string` constraints so `terraform init`
     # (which runs before the worker's validate/AI-fix loop) doesn't dead-end.
