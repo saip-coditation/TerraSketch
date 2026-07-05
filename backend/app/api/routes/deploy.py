@@ -338,6 +338,26 @@ def fix_instance_vpc_security_groups(files: dict) -> dict:
     return {**files, "main.tf": result}
 
 
+def fix_db_subnet_group_arg(files: dict) -> dict:
+    """On aws_db_instance the argument is `db_subnet_group_name`, not
+    `subnet_group_name` (which IS valid on aws_elasticache_cluster), so scope the
+    rename to aws_db_instance blocks only. Otherwise validate fails with
+    'An argument named "subnet_group_name" is not expected here'."""
+    main = files.get("main.tf")
+    if not main or "aws_db_instance" not in main or "subnet_group_name" not in main:
+        return files
+    result = main
+    for m in reversed(list(re.finditer(r'resource\s+"aws_db_instance"\s+"[A-Za-z0-9_]+"\s*\{', main))):
+        ob = main.index("{", m.start())
+        eb = _block_end(main, ob)
+        body = main[ob : eb + 1]
+        # (?<![A-Za-z0-9_]) so we don't turn db_subnet_group_name into db_db_...
+        new_body = re.sub(r"(?<![A-Za-z0-9_])subnet_group_name(\s*)=", r"db_subnet_group_name\1=", body)
+        if new_body != body:
+            result = result[:ob] + new_body + result[eb + 1 :]
+    return {**files, "main.tf": result}
+
+
 def uniquify_deployment(files: dict) -> dict:
     """Append a per-deploy suffix to the naming-prefix variable so every deploy
     uses unique resource names. This prevents collisions with leftovers AND means
@@ -440,6 +460,9 @@ def prepare_files_for_deploy(files: dict, region: str) -> dict:
 
     # VPC instances need vpc_security_group_ids (IDs), not security_groups (names).
     out = fix_instance_vpc_security_groups(out)
+
+    # aws_db_instance uses db_subnet_group_name, not subnet_group_name.
+    out = fix_db_subnet_group_arg(out)
 
     # Last: repair unclosed `type = list(string` constraints so `terraform init`
     # (which runs before the worker's validate/AI-fix loop) doesn't dead-end.
