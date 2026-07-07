@@ -338,6 +338,34 @@ def fix_instance_vpc_security_groups(files: dict) -> dict:
     return {**files, "main.tf": result}
 
 
+def fix_subnet_count_cidr_mismatch(files: dict) -> dict:
+    """A generated aws_subnet often sets `count` to the number of AZs (6 in
+    us-east-1) but indexes a fixed-length CIDR list, so apply fails with
+    'Invalid index ... count.index is N is >= length of the collection'. Tie the
+    subnet's count to the length of the CIDR list it indexes so count can never
+    exceed it. Handles both var.list[count.index] and element(var.list, count.index)."""
+    main = files.get("main.tf")
+    if not main or 'resource "aws_subnet"' not in main:
+        return files
+    result = main
+    for m in reversed(list(re.finditer(r'resource\s+"aws_subnet"\s+"[A-Za-z0-9_]+"\s*\{', main))):
+        ob = main.index("{", m.start())
+        eb = _block_end(main, ob)
+        body = main[ob : eb + 1]
+        cm = re.search(r"cidr_block\s*=\s*var\.([A-Za-z0-9_]+)\s*\[\s*count\.index\s*\]", body)
+        if not cm:
+            cm = re.search(r"cidr_block\s*=\s*element\(\s*var\.([A-Za-z0-9_]+)\s*,\s*count\.index\s*\)", body)
+        if not cm:
+            continue
+        want = f"length(var.{cm.group(1)})"
+        cnt = re.search(r"(\n[ \t]*)count(?![A-Za-z0-9_])\s*=\s*([^\n]+)", body)
+        if not cnt or cnt.group(2).strip() == want:
+            continue
+        new_body = body[: cnt.start()] + f"{cnt.group(1)}count = {want}" + body[cnt.end() :]
+        result = result[:ob] + new_body + result[eb + 1 :]
+    return {**files, "main.tf": result}
+
+
 def fix_db_subnet_group_arg(files: dict) -> dict:
     """On aws_db_instance the argument is `db_subnet_group_name`, not
     `subnet_group_name` (which IS valid on aws_elasticache_cluster), so scope the
@@ -463,6 +491,9 @@ def prepare_files_for_deploy(files: dict, region: str) -> dict:
 
     # aws_db_instance uses db_subnet_group_name, not subnet_group_name.
     out = fix_db_subnet_group_arg(out)
+
+    # Subnet count must not exceed its CIDR list length (AZ-count vs fixed list).
+    out = fix_subnet_count_cidr_mismatch(out)
 
     # Last: repair unclosed `type = list(string` constraints so `terraform init`
     # (which runs before the worker's validate/AI-fix loop) doesn't dead-end.
