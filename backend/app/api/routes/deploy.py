@@ -338,6 +338,24 @@ def fix_instance_vpc_security_groups(files: dict) -> dict:
     return {**files, "main.tf": result}
 
 
+def force_single_az_rds(files: dict) -> dict:
+    """Force multi_az = false on aws_db_instance. For a first-draft/demo tool,
+    Multi-AZ roughly DOUBLES both RDS build time (~12 min vs ~5) and cost with no
+    benefit for a throwaway stack, so drop it back to single-AZ when set true."""
+    main = files.get("main.tf")
+    if not main or "aws_db_instance" not in main or "multi_az" not in main:
+        return files
+    result = main
+    for m in reversed(list(re.finditer(r'resource\s+"aws_db_instance"\s+"[A-Za-z0-9_]+"\s*\{', main))):
+        ob = main.index("{", m.start())
+        eb = _block_end(main, ob)
+        body = main[ob : eb + 1]
+        new_body = re.sub(r"(multi_az\s*=\s*)true", r"\1false", body)
+        if new_body != body:
+            result = result[:ob] + new_body + result[eb + 1 :]
+    return {**files, "main.tf": result}
+
+
 def fix_subnet_count_cidr_mismatch(files: dict) -> dict:
     """A generated aws_subnet often sets `count` to the number of AZs (6 in
     us-east-1) but indexes a fixed-length CIDR list, so apply fails with
@@ -494,6 +512,9 @@ def prepare_files_for_deploy(files: dict, region: str) -> dict:
 
     # Subnet count must not exceed its CIDR list length (AZ-count vs fixed list).
     out = fix_subnet_count_cidr_mismatch(out)
+
+    # Single-AZ RDS for demo/first-draft deploys (faster + cheaper).
+    out = force_single_az_rds(out)
 
     # Last: repair unclosed `type = list(string` constraints so `terraform init`
     # (which runs before the worker's validate/AI-fix loop) doesn't dead-end.

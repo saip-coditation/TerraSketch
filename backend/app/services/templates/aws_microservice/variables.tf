@@ -28,6 +28,9 @@ variable "s3_bucket_name" {
 variable "container_image" {
   description = "Container image for ECS task"
   type        = string
+  # A real, public, runnable default so the ALB/CloudFront serves a live page
+  # out of the box instead of a 502. Swap for your own image.
+  default = "public.ecr.aws/nginx/nginx:latest"
 }
 
 variable "container_port" {

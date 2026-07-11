@@ -282,10 +282,13 @@ resource "aws_ecs_service" "app" {
   desired_count   = var.ecs_desired_count
   launch_type     = "FARGATE"
 
+  # Tasks run in public subnets with a public IP so Fargate can pull the
+  # container image (no NAT gateway in this template). The security group still
+  # only allows inbound traffic from the ALB, so tasks aren't publicly exposed.
   network_configuration {
-    subnets          = aws_subnet.private[*].id
+    subnets          = aws_subnet.public[*].id
     security_groups  = [aws_security_group.ecs_tasks.id]
-    assign_public_ip = false
+    assign_public_ip = true
   }
 
   load_balancer {
