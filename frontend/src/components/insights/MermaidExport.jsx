@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import mermaid from "mermaid";
-import { parseResources, parseEdges } from "../../utils/hclParse.js";
+import { parseResources, parseEdges, readSize, readCount } from "../../utils/hclParse.js";
 
 mermaid.initialize({
   startOnLoad: false,
@@ -55,6 +55,16 @@ const EDGE_RULES = [
   { from: "security", to: "data",      label: "secures" },
 ];
 
+// group-pair → semantic label, shared by both diagram builders so edges read
+// as "routes to" / "reads/writes" instead of bare arrows either way they're found.
+const EDGE_LABEL_BY_GROUP_PAIR = Object.fromEntries(
+  EDGE_RULES.map((r) => [`${r.from}>${r.to}`, r.label])
+);
+
+function edgeLabelForGroups(fromGroup, toGroup) {
+  return EDGE_LABEL_BY_GROUP_PAIR[`${fromGroup}>${toGroup}`] || "";
+}
+
 // Fine-grained keyword edges within the same resource list
 const KEYWORD_EDGES = [
   { from: ["internet gateway", "igw"], to: ["vpc", "subnet", "route table"] },
@@ -87,55 +97,6 @@ function groupForType(type) {
   return "other";
 }
 
-// Build the diagram from the ACTUAL Terraform code: nodes are real resource
-// blocks, edges are real interpolation references between them.
-function buildMermaidFromBlocks(blocks, edges) {
-  if (!blocks.length) return "";
-
-  const nodes = blocks.map((b) => ({
-    id: safeId(b.address),
-    label: b.name,
-    type: b.type,
-    group: groupForType(b.type),
-  }));
-
-  const seen = new Set();
-  const unique = nodes.filter((n) => (seen.has(n.id) ? false : (seen.add(n.id), true)));
-  const ids = new Set(unique.map((n) => n.id));
-
-  const lines = ["graph TD"];
-
-  const byGroup = {};
-  for (const n of unique) (byGroup[n.group] = byGroup[n.group] || []).push(n);
-
-  for (const [group, gnodes] of Object.entries(byGroup)) {
-    const groupLabel = group.charAt(0).toUpperCase() + group.slice(1);
-    if (gnodes.length > 1) {
-      lines.push(`  subgraph ${group}["${groupLabel}"]`);
-      for (const n of gnodes) lines.push(`    ${n.id}["${n.label}<br/><small>${n.type}</small>"]`);
-      lines.push("  end");
-    } else {
-      lines.push(`  ${gnodes[0].id}["${gnodes[0].label}<br/><small>${gnodes[0].type}</small>"]`);
-    }
-  }
-
-  const added = new Set();
-  for (const e of edges) {
-    const from = safeId(e.from);
-    const to = safeId(e.to);
-    const key = `${from}-->${to}`;
-    if (from === to || !ids.has(from) || !ids.has(to) || added.has(key)) continue;
-    added.add(key);
-    lines.push(`  ${from} --> ${to}`);
-  }
-
-  for (const n of unique) {
-    lines.push(`  style ${n.id} ${GROUP_STYLES[n.group] || GROUP_STYLES.other}`);
-  }
-
-  return lines.join("\n");
-}
-
 function safeId(name) {
   return name.replace(/[^a-zA-Z0-9]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
 }
@@ -143,6 +104,88 @@ function safeId(name) {
 function shortName(name) {
   // Strip parenthetical provider suffixes like "(Amazon RDS)", "(AWS)"
   return name.replace(/\s*\([^)]*\)\s*/g, "").trim() || name;
+}
+
+// Shared: emit nodes grouped into per-layer subgraphs. `nodeLine(n)` renders
+// one node's mermaid label so the two builders can differ only in node text.
+function emitGroupedNodes(lines, unique, nodeLine) {
+  const byGroup = {};
+  for (const n of unique) (byGroup[n.group] = byGroup[n.group] || []).push(n);
+
+  const GROUP_ORDER = ["network", "frontend", "compute", "data", "messaging", "security", "other"];
+  const groups = Object.keys(byGroup).sort(
+    (a, b) => GROUP_ORDER.indexOf(a) - GROUP_ORDER.indexOf(b)
+  );
+
+  for (const group of groups) {
+    const gnodes = byGroup[group];
+    const groupLabel = group.charAt(0).toUpperCase() + group.slice(1);
+    if (gnodes.length > 1) {
+      lines.push(`  subgraph ${group}["${groupLabel} (${gnodes.length})"]`);
+      for (const n of gnodes) lines.push(`    ${nodeLine(n)}`);
+      lines.push("  end");
+    } else {
+      lines.push(`  ${nodeLine(gnodes[0])}`);
+    }
+  }
+}
+
+// Shared: one `style` line per node, colored by its layer.
+function emitStyles(lines, unique) {
+  for (const n of unique) {
+    lines.push(`  style ${n.id} ${GROUP_STYLES[n.group] || GROUP_STYLES.other}`);
+  }
+}
+
+// Shared: dedupe + push an edge line, optionally labeled (`A -->|label| B`).
+function makeEdgeAdder(lines, addedEdges) {
+  return (fromId, toId, label = "") => {
+    const key = `${fromId}-->${toId}`;
+    if (fromId === toId || addedEdges.has(key)) return;
+    addedEdges.add(key);
+    lines.push(label ? `  ${fromId} -->|${label}| ${toId}` : `  ${fromId} --> ${toId}`);
+  };
+}
+
+// Build the diagram from the ACTUAL Terraform code: nodes are real resource
+// blocks, edges are real interpolation references between them.
+function buildMermaidFromBlocks(blocks, edges) {
+  if (!blocks.length) return "";
+
+  const nodes = blocks.map((b) => {
+    const size = readSize(b.body);
+    const count = readCount(b.body);
+    const meta = [b.type, size, count > 1 ? `×${count}` : null].filter(Boolean).join(" · ");
+    return {
+      id: safeId(b.address),
+      label: b.name,
+      type: b.type,
+      group: groupForType(b.type),
+      meta,
+    };
+  });
+
+  const seen = new Set();
+  const unique = nodes.filter((n) => (seen.has(n.id) ? false : (seen.add(n.id), true)));
+  const ids = new Set(unique.map((n) => n.id));
+  const byId = new Map(unique.map((n) => [n.id, n]));
+
+  const lines = ["graph TD"];
+  emitGroupedNodes(lines, unique, (n) => `${n.id}["${n.label}<br/><small>${n.meta}</small>"]`);
+
+  const addedEdges = new Set();
+  const addEdge = makeEdgeAdder(lines, addedEdges);
+  for (const e of edges) {
+    const from = safeId(e.from);
+    const to = safeId(e.to);
+    if (!ids.has(from) || !ids.has(to)) continue;
+    const label = edgeLabelForGroups(byId.get(from).group, byId.get(to).group);
+    addEdge(from, to, label);
+  }
+
+  emitStyles(lines, unique);
+
+  return lines.join("\n");
 }
 
 function buildMermaid(resources) {
@@ -164,36 +207,18 @@ function buildMermaid(resources) {
   });
 
   const lines = ["graph TD"];
-
-  // Group nodes into subgraphs
-  const byGroup = {};
-  for (const n of unique) (byGroup[n.group] = byGroup[n.group] || []).push(n);
-
-  for (const [group, gnodes] of Object.entries(byGroup)) {
-    const groupLabel = group.charAt(0).toUpperCase() + group.slice(1);
-    if (gnodes.length > 1) {
-      lines.push(`  subgraph ${group}["${groupLabel}"]`);
-      for (const n of gnodes) lines.push(`    ${n.id}["${n.label}"]`);
-      lines.push("  end");
-    } else {
-      lines.push(`  ${gnodes[0].id}["${gnodes[0].label}"]`);
-    }
-  }
+  emitGroupedNodes(lines, unique, (n) => `${n.id}["${n.label}"]`);
 
   // Add edges — fine-grained keyword matching first
   const addedEdges = new Set();
-  const addEdge = (fromId, toId) => {
-    const key = `${fromId}-->${toId}`;
-    if (fromId !== toId && !addedEdges.has(key)) {
-      addedEdges.add(key);
-      lines.push(`  ${fromId} --> ${toId}`);
-    }
-  };
+  const addEdge = makeEdgeAdder(lines, addedEdges);
 
   for (const rule of KEYWORD_EDGES) {
     const fromNodes = unique.filter((n) => rule.from.some((k) => n.raw.toLowerCase().includes(k)));
     const toNodes   = unique.filter((n) => rule.to.some((k) => n.raw.toLowerCase().includes(k)));
-    for (const f of fromNodes) for (const t of toNodes) addEdge(f.id, t.id);
+    for (const f of fromNodes) for (const t of toNodes) {
+      addEdge(f.id, t.id, edgeLabelForGroups(f.group, t.group));
+    }
   }
 
   // Fallback: group-level edges if few keyword edges fired
@@ -201,15 +226,11 @@ function buildMermaid(resources) {
     for (const rule of EDGE_RULES) {
       const fromNodes = unique.filter((n) => n.group === rule.from);
       const toNodes   = unique.filter((n) => n.group === rule.to);
-      for (const f of fromNodes) for (const t of toNodes) addEdge(f.id, t.id);
+      for (const f of fromNodes) for (const t of toNodes) addEdge(f.id, t.id, rule.label);
     }
   }
 
-  // Styles
-  for (const n of unique) {
-    const style = GROUP_STYLES[n.group] || GROUP_STYLES.other;
-    lines.push(`  style ${n.id} ${style}`);
-  }
+  emitStyles(lines, unique);
 
   return lines.join("\n");
 }
@@ -252,6 +273,49 @@ function MermaidDiagram({ diagram }) {
       dangerouslySetInnerHTML={{ __html: svg }}
     />
   );
+}
+
+// Build a diagram straight from a DiagramIR (nodes/edges as produced by the
+// understand/clarify agent nodes) — used by the clarifying-questions screen to
+// show "what we understood so far" before Terraform code exists yet.
+export function buildMermaidFromIR(nodes, edges, highlightIds = new Set()) {
+  if (!nodes?.length) return "";
+
+  const mapped = nodes.map((n) => ({
+    id: safeId(n.id),
+    label: n.label || n.kind || n.id,
+    group: detectGroup(n.kind || n.label || ""),
+    highlighted: highlightIds.has(n.id),
+  }));
+
+  const seen = new Set();
+  const unique = mapped.filter((n) => (seen.has(n.id) ? false : (seen.add(n.id), true)));
+  const ids = new Set(unique.map((n) => n.id));
+
+  const lines = ["graph TD"];
+  emitGroupedNodes(lines, unique, (n) => `${n.id}["${n.label}${n.highlighted ? " ❓" : ""}"]`);
+
+  const addedEdges = new Set();
+  const addEdge = makeEdgeAdder(lines, addedEdges);
+  for (const e of edges || []) {
+    const from = safeId(e.source ?? e.from);
+    const to = safeId(e.target ?? e.to);
+    if (!ids.has(from) || !ids.has(to)) continue;
+    addEdge(from, to, e.label || "");
+  }
+
+  emitStyles(lines, unique);
+  return lines.join("\n");
+}
+
+/** Live preview of a DiagramIR, with ambiguous/in-question nodes marked with ❓. */
+export function DiagramPreview({ nodes, edges, highlightNodeIds }) {
+  const diagram = useMemo(
+    () => buildMermaidFromIR(nodes, edges, new Set(highlightNodeIds || [])),
+    [nodes, edges, highlightNodeIds]
+  );
+  if (!diagram) return null;
+  return <MermaidDiagram diagram={diagram} />;
 }
 
 export default function MermaidExport({ resources = [], files = null }) {
