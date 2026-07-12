@@ -127,3 +127,125 @@ def canonical_resources_list() -> list[str]:
         "Amazon Aurora",
         "Amazon DynamoDB",
     ]
+
+
+# Fixed multiple-choice config questions for the canonical microservice. The
+# template is vetted and its knobs are known, so these are deterministic (no LLM
+# call). Each answer maps to template variable defaults via
+# apply_microservice_config_answers(). Shape matches the frontend
+# ClarifyingQuestions.jsx renderer (button-group, no free text).
+_MICROSERVICE_QUESTIONS: list[dict] = [
+    {
+        "id": "config:ecs_size",
+        "kind": "configuration",
+        "question": "How much CPU/memory should each app container (ECS Fargate) get?",
+        "options": [
+            {"label": "Small — 0.25 vCPU / 512 MB", "value": "256/512"},
+            {"label": "Medium — 0.5 vCPU / 1 GB", "value": "512/1024"},
+            {"label": "Large — 1 vCPU / 2 GB", "value": "1024/2048"},
+        ],
+        "recommended_index": 1,
+    },
+    {
+        "id": "config:ecs_desired_count",
+        "kind": "configuration",
+        "question": "How many app containers should run (scaling / availability)?",
+        "options": [
+            {"label": "1 — cheapest, no redundancy", "value": "1"},
+            {"label": "2 — redundant across AZs", "value": "2"},
+            {"label": "4 — higher throughput", "value": "4"},
+        ],
+        "recommended_index": 1,
+    },
+    {
+        "id": "config:aurora_instance_class",
+        "kind": "configuration",
+        "question": "What size should the Aurora MySQL database be?",
+        "options": [
+            {"label": "db.t4g.medium — burstable, low cost", "value": "db.t4g.medium"},
+            {"label": "db.r6g.large — memory-optimized, production", "value": "db.r6g.large"},
+        ],
+        "recommended_index": 0,
+    },
+    {
+        "id": "config:log_retention_days",
+        "kind": "configuration",
+        "question": "How long should CloudWatch keep the application logs?",
+        "options": [
+            {"label": "7 days", "value": "7"},
+            {"label": "30 days", "value": "30"},
+            {"label": "90 days", "value": "90"},
+        ],
+        "recommended_index": 0,
+    },
+    {
+        "id": "config:backup_retention_period",
+        "kind": "configuration",
+        "question": "How many days of automated database backups do you want?",
+        "options": [
+            {"label": "1 day — minimal", "value": "1"},
+            {"label": "7 days", "value": "7"},
+            {"label": "14 days", "value": "14"},
+        ],
+        "recommended_index": 1,
+    },
+]
+
+
+def microservice_config_questions() -> list[dict]:
+    """Fixed MCQ set (size / scaling / DB size / log retention / backups) for the
+    canonical microservice — deterministic, no LLM call. Returns fresh copies."""
+    return [{**q, "options": [dict(o) for o in q["options"]]} for q in _MICROSERVICE_QUESTIONS]
+
+
+def _set_var_default(vt: str, varname: str, literal: str) -> str:
+    """Set the `default = <literal>` inside `variable "varname" { ... }`."""
+    m = re.search(rf'variable\s+"{varname}"\s*\{{', vt)
+    if not m:
+        return vt
+    brace = vt.index("{", m.start())
+    depth, end = 0, brace
+    for j in range(brace, len(vt)):
+        if vt[j] == "{":
+            depth += 1
+        elif vt[j] == "}":
+            depth -= 1
+            if depth == 0:
+                end = j
+                break
+    body = vt[brace + 1 : end]
+    if re.search(r"(^|\n)\s*default\s*=", body):
+        body = re.sub(r"default\s*=\s*[^\n]+", f"default = {literal}", body, count=1)
+    else:
+        body = body.rstrip() + f"\n  default = {literal}\n"
+    return vt[: brace + 1] + body + vt[end:]
+
+
+def apply_microservice_config_answers(files: dict, answers: dict) -> dict:
+    """Patch canonical template variable defaults from MCQ answers.
+    `answers` is {question_id: selected_option_index}."""
+    vt = files.get("variables.tf")
+    if not vt:
+        return files
+    by_id = {q["id"]: q for q in _MICROSERVICE_QUESTIONS}
+    for qid, idx in (answers or {}).items():
+        q = by_id.get(qid)
+        if not q:
+            continue
+        try:
+            value = q["options"][int(idx)]["value"]
+        except (IndexError, ValueError, TypeError):
+            continue
+        if qid == "config:ecs_size":
+            cpu, _, mem = value.partition("/")
+            vt = _set_var_default(vt, "ecs_cpu", cpu)
+            vt = _set_var_default(vt, "ecs_memory", mem)
+        elif qid == "config:ecs_desired_count":
+            vt = _set_var_default(vt, "ecs_desired_count", value)
+        elif qid == "config:aurora_instance_class":
+            vt = _set_var_default(vt, "aurora_instance_class", f'"{value}"')
+        elif qid == "config:log_retention_days":
+            vt = _set_var_default(vt, "log_retention_days", value)
+        elif qid == "config:backup_retention_period":
+            vt = _set_var_default(vt, "backup_retention_period", value)
+    return {**files, "variables.tf": vt}

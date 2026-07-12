@@ -113,6 +113,18 @@ variable "api_path_pattern" {
   default     = "/api/*"
 }
 
+variable "log_retention_days" {
+  description = "CloudWatch Logs retention for the ECS log group"
+  type        = number
+  default     = 7
+}
+
+variable "backup_retention_period" {
+  description = "Aurora automated backup retention (days)"
+  type        = number
+  default     = 7
+}
+
 variable "cloudfront_price_class" {
   type    = string
   default = "PriceClass_100"

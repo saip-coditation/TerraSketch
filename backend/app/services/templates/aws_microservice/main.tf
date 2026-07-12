@@ -272,7 +272,7 @@ resource "aws_ecs_task_definition" "app" {
 
 resource "aws_cloudwatch_log_group" "ecs" {
   name              = "/ecs/${var.name_prefix}"
-  retention_in_days = 7
+  retention_in_days = var.log_retention_days
 }
 
 resource "aws_ecs_service" "app" {
@@ -333,7 +333,7 @@ resource "aws_rds_cluster" "aurora" {
   master_password         = var.db_password
   db_subnet_group_name    = aws_db_subnet_group.aurora.name
   vpc_security_group_ids  = [aws_security_group.aurora.id]
-  backup_retention_period = 7
+  backup_retention_period = var.backup_retention_period
   storage_encrypted       = true
   skip_final_snapshot     = var.skip_final_snapshot
 }
