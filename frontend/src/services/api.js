@@ -104,6 +104,13 @@ export async function generateTerraformV2(payload) {
   return data;
 }
 
+// Apply the canonical microservice config MCQ answers to a generation (no LLM
+// re-run). `answers` is { [questionId]: selectedOptionIndex }.
+export async function applyGenerationConfig(generationId, answers) {
+  const { data } = await api.post(`/api/generation/${generationId}/config`, { answers });
+  return data;
+}
+
 export async function editGenerationIR(generationId, ir) {
   const { data } = await api.post(`/api/v2/generation/${generationId}/ir/edit`, ir);
   return data;
