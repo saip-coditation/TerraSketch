@@ -49,6 +49,11 @@ class GenerateRequest(BaseModel):
         default=False,
         description="When true, run generation but do not persist the result.",
     )
+    config_answers: dict[str, int] | None = Field(
+        default=None,
+        description="Answers to the canonical microservice config MCQs, as "
+        "{question_id: selected_option_index}. Applied to the template's variable defaults.",
+    )
 
     @field_validator("image_base64")
     @classmethod
@@ -98,6 +103,11 @@ class GenerateResponse(BaseModel):
     file_diff_summary: dict[str, Any] | None = None
     confidence_scores: dict[str, int] = {}
     placeholders: list[str] = []
+    clarifying_questions: list[dict[str, Any]] = Field(
+        default=[],
+        description="MCQ config questions (button-group, no free text) to refine the "
+        "canonical microservice — empty unless the canonical template was applied.",
+    )
     token_usage: TokenUsage | None = None
     request_id: str | None = None
     created_at: datetime

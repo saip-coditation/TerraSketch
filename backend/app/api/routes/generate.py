@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_optional_user
@@ -24,8 +25,10 @@ from app.services.quality.diagram_match import (
 )
 from app.services.quality.secret_scan import scan_generated_files
 from app.services.templates.aws_microservice import (
+    apply_microservice_config_answers,
     canonical_resources_list,
     maybe_replace_with_canonical_microservice,
+    microservice_config_questions,
 )
 from app.services.templates.generation_hints import build_generation_hints
 from app.services.terraform.cli import run_terraform_fmt_check, run_terraform_validate
@@ -361,6 +364,11 @@ async def post_generate(
 
     rid = getattr(request.state, "request_id", None)
 
+    # Option A: apply canonical microservice config MCQ answers, if the client
+    # sent them (one-shot). Only touches the vetted template's variable defaults.
+    if payload.config_answers and result.canon_applied:
+        result.files = apply_microservice_config_answers(result.files, payload.config_answers)
+
     # §3 P1: v1 validate-fix loop — only when V1_VALIDATE_FIX_ENABLED=true
     _settings = get_settings()
     if _settings.V1_VALIDATE_FIX_ENABLED and not _settings.SKIP_TERRAFORM_VALIDATE:
@@ -401,6 +409,10 @@ async def post_generate(
         )
         resp = _response_from_record(record, rid)
         resp.token_usage = ai_output.token_usage
+        # Surface the config MCQs for the canonical microservice so the UI can
+        # let the user refine size/scaling/logging/backups (unless already answered).
+        if result.canon_applied and not payload.config_answers:
+            resp.clarifying_questions = microservice_config_questions()
         return resp
 
     # dry_run: return without persisting
@@ -437,5 +449,35 @@ async def get_generation(
     record = db.get(models.Generation, generation_id)
     if not record:
         raise HTTPException(status_code=404, detail="Generation not found")
+    rid = getattr(request.state, "request_id", None)
+    return _response_from_record(record, rid)
+
+
+class ConfigAnswersRequest(BaseModel):
+    answers: dict[str, int]
+
+
+@router.post(
+    "/generation/{generation_id}/config",
+    response_model=GenerateResponse,
+    summary="Apply canonical microservice config MCQ answers to a generation (no LLM re-run)",
+)
+async def apply_generation_config(
+    generation_id: str,
+    payload: ConfigAnswersRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> GenerateResponse:
+    record = db.get(models.Generation, generation_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Generation not found")
+    # Patch the stored template's variable defaults from the MCQ answers. This is
+    # a no-op for files that don't have the canonical microservice variables.
+    record.generated_files = apply_microservice_config_answers(
+        record.generated_files or {}, payload.answers
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
     rid = getattr(request.state, "request_id", None)
     return _response_from_record(record, rid)
