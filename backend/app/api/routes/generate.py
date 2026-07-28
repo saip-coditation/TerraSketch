@@ -24,6 +24,7 @@ from app.services.quality.diagram_match import (
     surface_match_percent_for_canonical_baseline,
 )
 from app.services.quality.secret_scan import scan_generated_files
+from app.services.quality.security_scan import scan_best_practices
 from app.services.templates.aws_microservice import (
     apply_microservice_config_answers,
     canonical_resources_list,
@@ -160,7 +161,8 @@ class GenerationPipeline:
 
     @staticmethod
     def secret_scan(files: dict[str, str]) -> list[str]:
-        return scan_generated_files(files)
+        # Hardcoded-secret findings + best-practice misconfiguration findings.
+        return scan_generated_files(files) + scan_best_practices(files)
 
     @staticmethod
     def file_diff(
