@@ -81,6 +81,29 @@ class Ambiguity(BaseModel):
     note: str
 
 
+class QuestionOption(BaseModel):
+    label: str  # human-readable, e.g. "db.t3.medium (mid, ~$50/mo)"
+    value: str  # literal value to write back: an IR `kind` string or a args[] value
+
+
+class ClarifyingQuestion(BaseModel):
+    """A single MCQ surfaced to the user instead of the model silently guessing.
+
+    ``structural`` questions resolve diagram ambiguity (target_node_id → IRNode.kind);
+    ``configuration`` questions resolve sizing/access/redundancy choices
+    (target_resource_id/target_field → PlannedResource.args[field]).
+    """
+
+    id: str
+    kind: Literal["structural", "configuration"]
+    target_node_id: str | None = None
+    target_resource_id: str | None = None
+    target_field: str | None = None
+    question: str
+    options: list[QuestionOption]
+    recommended_index: int = 0
+
+
 class DiagramIR(BaseModel):
     nodes: list[IRNode] = []
     edges: list[IREdge] = []
@@ -177,6 +200,7 @@ class GraphState(BaseModel):
     # HITL inputs threaded from the request
     correction_note: str | None = None
     architecture_preset: str = "auto"
+    scale_tier: str = "small"
 
     # Correlation IDs
     session_id: str | None = None
@@ -187,6 +211,7 @@ class GraphState(BaseModel):
     resource_plan: ResourcePlan | None = None
     files: TerraformFiles | None = None
     validation: ValidationReport | None = None
+    clarifying_questions: list[ClarifyingQuestion] = []
 
     trace: GenerationTrace
 
@@ -200,5 +225,7 @@ class AgentRunResult(BaseModel):
     resource_plan: ResourcePlan | None = None
     files: TerraformFiles | None = None
     validation: ValidationReport | None = None
+    clarifying_questions: list[ClarifyingQuestion] = []
     trace: GenerationTrace
     error: str | None = None
+    generation_id: str | None = None

@@ -1,8 +1,9 @@
-"""Clarifier: confidence-gated interrupt node.
+"""Clarifier: asks the user instead of silently guessing.
 
-Detects per-node ambiguities in the DiagramIR and either auto-resolves them
-or raises a confidence-interrupt so the HITL layer can surface them to the user.
-Blocked by U3 (per-node confidence) which is now implemented in state.py.
+Detects per-node ambiguities in the DiagramIR. High-confidence cases are
+auto-resolved; anything the model isn't confident about becomes a
+multiple-choice `ClarifyingQuestion` surfaced to the user (graph.py pauses
+the run when any are present) instead of being silently picked.
 """
 
 from __future__ import annotations
@@ -11,20 +12,59 @@ import time
 from typing import Any
 
 from app.agents.llm import AgentLLMError, call_tool
-from app.agents.state import Ambiguity, Decision, DiagramIR, GraphState, IRNode, NodeOutput
+from app.agents.state import (
+    Ambiguity,
+    ClarifyingQuestion,
+    Decision,
+    DiagramIR,
+    GraphState,
+    IRNode,
+    NodeOutput,
+    QuestionOption,
+)
 
-_CLARIFIER_SYSTEM = """You are a diagram-understanding specialist. You receive a DiagramIR that may contain ambiguous nodes (low confidence, unclear labels, or noted ambiguities). Your job is to either:
-1. Auto-resolve ambiguities where you have high confidence in the correct answer.
-2. Flag ambiguities that require user input (set confidence < 0.7 on those nodes).
+_MAX_CLARIFYING_QUESTIONS = 5
+
+_CLARIFIER_SYSTEM = """You are a diagram-understanding specialist. You receive a DiagramIR that may contain ambiguous nodes (low confidence, unclear labels, or noted ambiguities). For each node:
+1. If you are >=0.9 confident in the correct `kind`/`label`, auto-resolve it silently (update the node, set confidence high, do not ask a question about it).
+2. Otherwise, do NOT silently guess. Set the node's `kind` to your best guess anyway (so generation can still complete if the user doesn't answer), keep its confidence low, and add an entry to `clarifying_questions`: 2-4 concrete, mutually exclusive `kind` options (short label + the literal kind value), ordered with your best guess first (`recommended_index: 0`).
+
+Cap yourself at the 5 most impactful questions (skip trivial/cosmetic ambiguity).
 
 Return the same DiagramIR structure with:
-- Updated node `kind` or `label` where you auto-resolved.
-- Updated `confidence` per node — lower it if you're still unsure.
+- Updated node `kind`/`label` (auto-resolved or best-guess-pending-question).
+- Updated `confidence` per node.
 - Updated `ambiguities` list — remove entries you resolved, add new ones you found.
-- `reasoning`: describe each resolution and why.
+- `clarifying_questions`: as described above (empty list if nothing needs asking).
+- `reasoning`: describe each resolution/question and why.
 - `confidence`: your overall confidence in the resolved IR.
 
 You MUST call the `submit_diagram_ir` tool."""
+
+_QUESTION_OPTION_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "label": {"type": "string", "description": "Human-readable option, e.g. 'Application Load Balancer'."},
+        "value": {"type": "string", "description": "The literal `kind` string to write if this option is chosen."},
+    },
+    "required": ["label", "value"],
+}
+
+_CLARIFYING_QUESTION_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "target_node_id": {"type": "string", "description": "IR node id this question resolves."},
+        "question": {"type": "string"},
+        "options": {
+            "type": "array",
+            "items": _QUESTION_OPTION_SCHEMA,
+            "minItems": 2,
+            "maxItems": 4,
+        },
+        "recommended_index": {"type": "integer", "minimum": 0, "default": 0},
+    },
+    "required": ["target_node_id", "question", "options"],
+}
 
 _CLARIFIER_TOOL: dict[str, Any] = {
     "name": "submit_diagram_ir",
@@ -40,7 +80,17 @@ _CLARIFIER_TOOL: dict[str, Any] = {
                         "id": {"type": "string"},
                         "label": {"type": "string"},
                         "kind": {"type": "string"},
-                        "multiplicity": {"type": "integer", "minimum": 1, "default": 1},
+                        "multiplicity": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "zone": {"type": "string", "default": "default"},
+                                    "count": {"type": "integer", "minimum": 1, "default": 1},
+                                },
+                            },
+                            "default": [{"zone": "default", "count": 1}],
+                        },
                         "confidence": {"type": "number", "minimum": 0, "maximum": 1, "default": 1.0},
                     },
                     "required": ["id", "label", "kind"],
@@ -69,6 +119,10 @@ _CLARIFIER_TOOL: dict[str, Any] = {
                     },
                     "required": ["note"],
                 },
+            },
+            "clarifying_questions": {
+                "type": "array",
+                "items": _CLARIFYING_QUESTION_SCHEMA,
             },
             "reasoning": {"type": "string"},
             "confidence": {"type": "number", "minimum": 0, "maximum": 1},
@@ -110,6 +164,21 @@ async def run_clarify(state: GraphState) -> GraphState:
             for a in result.get("ambiguities", [])
         ],
     )
+
+    raw_questions = (result.get("clarifying_questions", []) or [])[:_MAX_CLARIFYING_QUESTIONS]
+    state.clarifying_questions = [
+        ClarifyingQuestion(
+            id=f"structural:{q['target_node_id']}",
+            kind="structural",
+            target_node_id=q["target_node_id"],
+            question=q["question"],
+            options=[QuestionOption(**o) for o in q.get("options", [])],
+            recommended_index=q.get("recommended_index", 0),
+        )
+        for q in raw_questions
+        if q.get("target_node_id") and q.get("options")
+    ]
+
     state.trace.clarify = NodeOutput(
         node="clarify",
         reasoning=str(result.get("reasoning", "")),

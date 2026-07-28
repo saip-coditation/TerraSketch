@@ -34,13 +34,23 @@ _FALLBACK_API_VERSIONS = (
 )
 _FOUNDRY_CHAT_API_VERSION = "2024-05-01-preview"
 
+# Guardrail: reject implausibly large image uploads before spending tokens/latency
+# on them. ~15MB of base64 (~11MB decoded) comfortably covers real diagram exports.
+_MAX_IMAGE_BASE64_CHARS = 15_000_000
+
 
 class AzureOpenAIError(RuntimeError):
     """Raised when Azure OpenAI call fails."""
 
-    def __init__(self, message: str, *, quota_exhausted: bool = False) -> None:
+    def __init__(
+        self, message: str, *, quota_exhausted: bool = False, content_filtered: bool = False
+    ) -> None:
         super().__init__(message)
         self.quota_exhausted = quota_exhausted
+        # Set when Azure's content-safety filter blocked the prompt or completion —
+        # retrying the same content against another fallback endpoint would just be
+        # filtered again, so callers should surface this distinctly rather than retry.
+        self.content_filtered = content_filtered
 
 
 def _ensure_data_url(image_base64: str) -> str:
@@ -95,6 +105,25 @@ def _extract_message_text(choice: Any) -> str:
     return ""
 
 
+def _raise_if_content_filtered(choice: Any, *, provider_label: str) -> None:
+    """Guardrail: detect Azure's content-safety filter blocking a completion.
+
+    A filtered completion comes back as ``finish_reason == "content_filter"``
+    with empty/partial content. Left undetected, callers previously treated this
+    the same as a generic empty response and retried the *same prompt* against
+    every fallback endpoint — wasting latency and quota on requests that will be
+    filtered again. Surface it distinctly instead.
+    """
+    finish_reason = getattr(choice, "finish_reason", None) if choice else None
+    if finish_reason == "content_filter":
+        raise AzureOpenAIError(
+            f"{provider_label} blocked the request: content filtered by Azure AI "
+            "content safety. Retrying against a fallback endpoint will not help — "
+            "rephrase the diagram/description or check the flagged categories.",
+            content_filtered=True,
+        )
+
+
 def _call_openai_v1_chat(
     *,
     endpoint: str,
@@ -102,7 +131,7 @@ def _call_openai_v1_chat(
     deployment: str,
     messages: list[dict[str, Any]],
     max_tokens: int,
-) -> str:
+) -> tuple[str, Any]:
     try:
         from openai import OpenAI
     except ImportError as exc:
@@ -129,15 +158,23 @@ def _call_openai_v1_chat(
     except Exception as exc:
         low = str(exc).lower()
         is_quota = "429" in low or "rate limit" in low or "quota" in low
-        raise AzureOpenAIError(f"OpenAI v1 chat failed: {exc}", quota_exhausted=is_quota) from exc
+        is_filtered = "content_filter" in low or "content management policy" in low
+        raise AzureOpenAIError(
+            f"OpenAI v1 chat failed: {exc}",
+            quota_exhausted=is_quota,
+            content_filtered=is_filtered,
+        ) from exc
 
     choice = response.choices[0] if response.choices else None
+    _raise_if_content_filtered(choice, provider_label="OpenAI v1 chat")
     raw = _extract_message_text(choice)
     if not raw:
         raise AzureOpenAIError("OpenAI v1 returned an empty response")
-    # Attach token usage to the response object so callers can read it
-    _call_openai_v1_chat._last_usage = getattr(response, "usage", None)
-    return raw
+    # Return usage alongside the text rather than stashing it on the function
+    # object — this function runs concurrently in a thread pool (see router.py's
+    # asyncio.to_thread), and a shared mutable attribute would let one request's
+    # usage stats leak into another's under load.
+    return raw, getattr(response, "usage", None)
 
 
 def _call_foundry_models_chat_completions(
@@ -171,9 +208,11 @@ def _call_foundry_models_chat_completions(
     if r.status_code >= 400:
         low = r.text.lower()
         is_quota = r.status_code == 429 or "rate limit" in low or "quota" in low
+        is_filtered = "content_filter" in low or "content management policy" in low
         raise AzureOpenAIError(
             f"Foundry chat completions failed: HTTP {r.status_code} — {r.text}",
             quota_exhausted=is_quota,
+            content_filtered=is_filtered,
         )
 
     try:
@@ -184,6 +223,14 @@ def _call_foundry_models_chat_completions(
     choices = data.get("choices") or []
     if not choices:
         raise AzureOpenAIError(f"Foundry returned no choices: {data!r}")
+
+    if choices[0].get("finish_reason") == "content_filter":
+        raise AzureOpenAIError(
+            "Foundry chat completions blocked the request: content filtered by "
+            "Azure AI content safety. Retrying against a fallback endpoint will "
+            "not help — rephrase the diagram/description or check the flagged categories.",
+            content_filtered=True,
+        )
 
     msg = choices[0].get("message") or {}
     content = msg.get("content")
@@ -244,10 +291,13 @@ def _call_classic_azure_openai(
                 temperature=0.2,
             )
             choice = response.choices[0] if response.choices else None
+            _raise_if_content_filtered(choice, provider_label="Azure OpenAI classic")
             raw = _extract_message_text(choice)
             if not raw:
                 raise AzureOpenAIError("Azure OpenAI returned an empty response")
             return raw
+        except AzureOpenAIError:
+            raise
         except Exception as exc:
             last_exc = exc
             message = str(exc)
@@ -269,9 +319,12 @@ def _call_classic_azure_openai(
                     "capacity",
                 )
             )
+            is_filtered = "content_filter" in low2 or "content management policy" in low2
             logger.exception("Azure OpenAI classic call failed")
             raise AzureOpenAIError(
-                f"Azure OpenAI call failed: {message}", quota_exhausted=is_quota
+                f"Azure OpenAI call failed: {message}",
+                quota_exhausted=is_quota,
+                content_filtered=is_filtered,
             ) from exc
 
     logger.error("Azure OpenAI classic: all API versions failed: %s", last_exc)
@@ -300,6 +353,12 @@ def generate_terraform(
         raise AzureOpenAIError(
             "Azure OpenAI is not configured. Set AZURE_OPENAI_ENDPOINT, "
             "AZURE_OPENAI_API_KEY, and AZURE_OPENAI_DEPLOYMENT in .env."
+        )
+
+    if image_base64 and len(image_base64) > _MAX_IMAGE_BASE64_CHARS:
+        raise AzureOpenAIError(
+            f"Diagram image is too large ({len(image_base64) // 1_000_000}MB base64, "
+            f"max {_MAX_IMAGE_BASE64_CHARS // 1_000_000}MB) — resize or crop it and retry."
         )
 
     user_text = build_user_message(
@@ -331,8 +390,7 @@ def generate_terraform(
     errors: list[str] = []
     max_out = settings.AZURE_OPENAI_MAX_TOKENS
 
-    def _attach_usage(output: ClaudeOutput) -> ClaudeOutput:
-        usage = getattr(_call_openai_v1_chat, "_last_usage", None)
+    def _with_usage(output: ClaudeOutput, usage: Any) -> ClaudeOutput:
         if usage:
             output.token_usage = TokenUsage(
                 prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
@@ -342,13 +400,17 @@ def generate_terraform(
         return output
 
     try:
-        raw_text = _call_openai_v1_chat(
+        raw_text, usage = _call_openai_v1_chat(
             endpoint=endpoint, api_key=key, deployment=deployment,
             messages=messages, max_tokens=max_out,
         )
-        return _attach_usage(parse_claude_response(raw_text))
+        return _with_usage(parse_claude_response(raw_text), usage)
     except AzureOpenAIError as exc:
         errors.append(str(exc))
+        if exc.content_filtered:
+            # Every fallback endpoint sees the same prompt, so a content-safety
+            # block will just be filtered again — don't burn latency/quota retrying.
+            raise
         logger.warning("OpenAI v1 path failed, trying fallbacks: %s", exc)
 
     if _is_foundry_services_host(endpoint):
@@ -360,6 +422,8 @@ def generate_terraform(
             return parse_claude_response(raw_text)
         except AzureOpenAIError as exc:
             errors.append(str(exc))
+            if exc.content_filtered:
+                raise
             logger.warning("Foundry /models path failed: %s", exc)
 
     try:
@@ -370,6 +434,8 @@ def generate_terraform(
         return parse_claude_response(raw_text)
     except AzureOpenAIError as exc:
         errors.append(str(exc))
+        if exc.content_filtered:
+            raise
 
     raise AzureOpenAIError(
         "All Azure chat completion strategies failed. Errors: " + " | ".join(errors)

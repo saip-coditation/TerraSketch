@@ -51,6 +51,7 @@ async def post_generate_v2(
             text_description=payload.text_description,
             correction_note=payload.correction_note,
             architecture_preset=payload.architecture_preset,
+            scale_tier=payload.scale_tier,
             session_id=payload.session_id,
             user_id=current_user.id if current_user else None,
             request_id=rid,
@@ -115,6 +116,7 @@ async def post_generate_v2(
             result.validation.valid if result.validation else None,
             len(result.trace.fixer_iterations),
         )
+        result.generation_id = record.id
 
     return result
 
@@ -180,10 +182,14 @@ async def edit_ir(
     except AgentLLMError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+    # Always persist the trace so a later pause (e.g. plan's own configuration
+    # questions) keeps this node's output for the next resume call to seed from —
+    # only gate the generated_files write on files actually being produced.
+    record.agent_trace = result.trace.model_dump(mode="json")
     if result.files:
         record.generated_files = result.files.as_dict()
-        record.agent_trace = result.trace.model_dump(mode="json")
-        db.commit()
+    db.commit()
+    result.generation_id = record.id
 
     return result
 
@@ -235,10 +241,11 @@ async def edit_plan(
     except AgentLLMError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+    record.agent_trace = result.trace.model_dump(mode="json")
     if result.files:
         record.generated_files = result.files.as_dict()
-        record.agent_trace = result.trace.model_dump(mode="json")
-        db.commit()
+    db.commit()
+    result.generation_id = record.id
 
     return result
 
@@ -294,6 +301,7 @@ async def edit_files(
     record.generated_files = result.files.as_dict() if result.files else record.generated_files
     record.agent_trace = result.trace.model_dump(mode="json")
     db.commit()
+    result.generation_id = record.id
 
     return result
 

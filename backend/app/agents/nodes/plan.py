@@ -17,11 +17,13 @@ from app.agents.context import ContextBuilder, RetrievedContext
 from app.agents.llm import AgentLLMError, call_tool
 from app.agents.prompts import PLAN_SYSTEM
 from app.agents.state import (
+    ClarifyingQuestion,
     Decision,
     GraphState,
     NodeOutput,
     PlannedEdge,
     PlannedResource,
+    QuestionOption,
     ResourcePlan,
     SkippedNode,
 )
@@ -29,6 +31,8 @@ from app.agents.tools import SUBMIT_RESOURCE_PLAN
 from app.services.rag.terraform_schema import get_schemas_for_plan
 
 logger = logging.getLogger(__name__)
+
+_MAX_CLARIFYING_QUESTIONS = 5
 
 
 async def run_plan(state: GraphState) -> GraphState:
@@ -72,7 +76,8 @@ async def run_plan(state: GraphState) -> GraphState:
 
     user_text = (
         f"Target cloud provider: {state.cloud_provider}\n"
-        f"Environment: {state.environment}\n\n"
+        f"Environment: {state.environment}\n"
+        f"Scale tier: {state.scale_tier}\n\n"
         f"{builder.build()}"
     )
 
@@ -109,6 +114,24 @@ async def run_plan(state: GraphState) -> GraphState:
         skipped=[SkippedNode(**s) for s in result.get("skipped", []) or []],
         edges=[PlannedEdge(**e) for e in result.get("edges", []) or []],
     )
+
+    # Only keep questions that reference a resource actually in the plan.
+    valid_resource_ids = {r.local_id for r in state.resource_plan.resources}
+    raw_questions = (result.get("clarifying_questions", []) or [])[:_MAX_CLARIFYING_QUESTIONS]
+    state.clarifying_questions = [
+        ClarifyingQuestion(
+            id=f"config:{q['target_resource_id']}:{q['target_field']}",
+            kind="configuration",
+            target_resource_id=q["target_resource_id"],
+            target_field=q["target_field"],
+            question=q["question"],
+            options=[QuestionOption(**o) for o in q.get("options", [])],
+            recommended_index=q.get("recommended_index", 0),
+        )
+        for q in raw_questions
+        if q.get("target_resource_id") in valid_resource_ids and q.get("target_field") and q.get("options")
+    ]
+
     state.trace.plan = NodeOutput(
         node="plan",
         reasoning=str(result.get("reasoning", "")),

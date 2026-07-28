@@ -24,6 +24,32 @@ _DECISION_ITEM: dict[str, Any] = {
 
 _EDGE_KIND = ["depends_on", "ingress", "trust", "target_of", "attaches_to"]
 
+_QUESTION_OPTION_ITEM: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "label": {"type": "string", "description": "Human-readable option, e.g. 'db.t3.medium (mid, ~$50/mo)'."},
+        "value": {"type": "string", "description": "The literal value to write into args[field] if chosen."},
+    },
+    "required": ["label", "value"],
+}
+
+_CONFIG_QUESTION_ITEM: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "target_resource_id": {"type": "string", "description": "PlannedResource.local_id this question configures."},
+        "target_field": {"type": "string", "description": "The args[] key this question sets, e.g. 'instance_class'."},
+        "question": {"type": "string"},
+        "options": {
+            "type": "array",
+            "items": _QUESTION_OPTION_ITEM,
+            "minItems": 2,
+            "maxItems": 4,
+        },
+        "recommended_index": {"type": "integer", "minimum": 0, "default": 0},
+    },
+    "required": ["target_resource_id", "target_field", "question", "options"],
+}
+
 
 SUBMIT_DIAGRAM_IR: dict[str, Any] = {
     "name": "submit_diagram_ir",
@@ -168,6 +194,15 @@ SUBMIT_RESOURCE_PLAN: dict[str, Any] = {
                     "required": ["source", "target", "kind"],
                 },
                 "description": "Typed dependency edges between planned resources.",
+            },
+            "clarifying_questions": {
+                "type": "array",
+                "items": _CONFIG_QUESTION_ITEM,
+                "description": (
+                    "Up to 5 questions for sizing/access/redundancy choices not clearly "
+                    "implied by the diagram or scale tier. `args` must still be filled with "
+                    "a sensible default so generation can complete unanswered."
+                ),
             },
             "reasoning": {"type": "string"},
             "confidence": {"type": "number", "minimum": 0, "maximum": 1},
