@@ -111,6 +111,16 @@ export async function applyGenerationConfig(generationId, answers) {
   return data;
 }
 
+// Modify a generation's Terraform from a plain-English instruction (AI Refine).
+export async function refineGeneration(generationId, instruction) {
+  const { data } = await api.post(
+    `/api/generation/${generationId}/refine`,
+    { instruction },
+    { timeout: LLM_TIMEOUT_MS }
+  );
+  return data;
+}
+
 export async function editGenerationIR(generationId, ir) {
   const { data } = await api.post(`/api/v2/generation/${generationId}/ir/edit`, ir);
   return data;

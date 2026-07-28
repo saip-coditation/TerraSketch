@@ -8,7 +8,7 @@ import Button from "../components/shared/Button.jsx";
 import InsightsDeck from "../components/insights/InsightsDeck.jsx";
 import FileDiffSummary from "../components/insights/FileDiffSummary.jsx";
 import ShareAndGitCard from "../components/insights/ShareAndGitCard.jsx";
-import { getApiBaseUrl, getGeneration, postFeedback } from "../services/api.js";
+import { getApiBaseUrl, getGeneration, postFeedback, refineGeneration } from "../services/api.js";
 import CostBreakdown from "../components/insights/CostBreakdown.jsx";
 import HandoffPanel from "../components/insights/HandoffPanel.jsx";
 import DeployPanel from "../components/insights/DeployPanel.jsx";
@@ -327,6 +327,27 @@ export default function Result() {
   const [comment, setComment] = useState("");
   const [feedbackType, setFeedbackType] = useState("");
   const [feedbackState, setFeedbackState] = useState("idle");
+  // AI Refine: edit the generated Terraform from a plain-English instruction.
+  const [refineText, setRefineText] = useState("");
+  const [refining, setRefining] = useState(false);
+  const [refineErr, setRefineErr] = useState(null);
+
+  const onRefine = async () => {
+    const instruction = refineText.trim();
+    if (!instruction || refining) return;
+    setRefining(true);
+    setRefineErr(null);
+    try {
+      const result = await refineGeneration(id, instruction);
+      setData(result);
+      setFiles(result.files || {});
+      setRefineText("");
+    } catch (e) {
+      setRefineErr(e.message || "Refine failed — try rephrasing.");
+    } finally {
+      setRefining(false);
+    }
+  };
 
   useEffect(() => {
     // Navigated here with the result already in state (e.g. after a refine) —
@@ -473,6 +494,29 @@ export default function Result() {
           </Link>
         </div>
       </header>
+
+      {/* ── AI Refine: edit the Terraform in plain English ───────────────── */}
+      <section className="mb-6 rounded-xl border border-brand-400/25 bg-brand-400/5 p-4">
+        <label className="block text-sm font-semibold text-slate-100">✨ Refine with AI</label>
+        <p className="mt-1 text-xs text-slate-400">
+          Describe a change in plain English — e.g. “make the database bigger”, “add a Redis cache”,
+          or “switch instances to t3.large”. It rewrites the Terraform in place.
+        </p>
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+          <input
+            value={refineText}
+            onChange={(e) => setRefineText(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && onRefine()}
+            placeholder="e.g. add a CloudWatch alarm on the database"
+            disabled={refining}
+            className="flex-1 rounded-lg border border-white/10 bg-slate-900/60 px-3 py-2 text-sm text-slate-100 outline-none focus:border-brand-400/60 disabled:opacity-60"
+          />
+          <Button type="button" onClick={onRefine} disabled={refining || !refineText.trim()} className="py-2">
+            {refining ? "Refining…" : "Refine"}
+          </Button>
+        </div>
+        {refineErr && <p className="mt-2 text-xs text-rose-300">{refineErr}</p>}
+      </section>
 
       {/* ── Dashboard KPI stat cards ─────────────────────────────────────── */}
       <div data-tour="result-kpis" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
