@@ -5,6 +5,7 @@ import { CURRENT_VERSION } from "../data/releases.js";
 
 const links = [
   { to: "/generate", label: "Generate" },
+  { to: "/diagram", label: "TF → Diagram" },
   { to: "/review", label: "Review" },
   { to: "/library", label: "Library" },
   { to: "/templates", label: "Templates" },

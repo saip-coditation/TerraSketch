@@ -4,6 +4,7 @@ import Navbar from "./components/Navbar.jsx";
 import Footer from "./components/Footer.jsx";
 import Home from "./pages/Home.jsx";
 import Generate from "./pages/Generate.jsx";
+import ReverseDiagram from "./pages/ReverseDiagram.jsx";
 import Result from "./pages/Result.jsx";
 import ResultV2 from "./pages/ResultV2.jsx";
 import History from "./pages/History.jsx";
@@ -24,6 +25,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/generate" element={<Generate />} />
+          <Route path="/diagram" element={<ReverseDiagram />} />
           <Route path="/result/:id" element={<Result />} />
           <Route path="/v2/result" element={<ResultV2 />} />
           <Route path="/templates" element={<Templates />} />
