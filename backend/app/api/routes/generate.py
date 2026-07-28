@@ -607,3 +607,70 @@ async def refine_generation(
     db.commit()
     db.refresh(record)
     return _response_from_record(record, getattr(request.state, "request_id", None))
+
+
+class ExportRequest(BaseModel):
+    format: str = Field(pattern="^(cloudformation|cdk)$")
+
+
+class ExportResponse(BaseModel):
+    format: str
+    filename: str
+    language: str
+    content: str
+
+
+_EXPORT_SPECS = {
+    "cloudformation": (
+        "Convert the given Terraform into an equivalent AWS CloudFormation template in YAML. "
+        "Preserve the same resources and wiring. Return ONLY valid CloudFormation YAML — no prose, "
+        "no markdown fences.",
+        "template.yaml",
+        "yaml",
+    ),
+    "cdk": (
+        "Convert the given Terraform into equivalent AWS CDK v2 code in TypeScript: a single Stack "
+        "class in one file with imports at the top. Preserve the same resources and wiring. "
+        "Return ONLY the TypeScript code — no prose, no markdown fences.",
+        "stack.ts",
+        "typescript",
+    ),
+}
+
+
+@router.post(
+    "/generation/{generation_id}/export",
+    response_model=ExportResponse,
+    summary="Export a generation's Terraform as CloudFormation (YAML) or AWS CDK (TypeScript)",
+)
+async def export_generation(
+    generation_id: str,
+    payload: ExportRequest,
+    db: Session = Depends(get_db),
+) -> ExportResponse:
+    import asyncio
+    import re as _re
+
+    record = db.get(models.Generation, generation_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Generation not found")
+    files = record.generated_files or {}
+    if not files:
+        raise HTTPException(status_code=400, detail="Generation has no files to export")
+
+    from app.api.routes.review import _call_llm
+
+    system, filename, language = _EXPORT_SPECS[payload.format]
+    blob = "\n\n".join(f"=== {n} ===\n{c}" for n, c in files.items() if (c or "").strip())
+    try:
+        raw = (await asyncio.to_thread(_call_llm, system, f"Terraform:\n{blob}") or "").strip()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Export LLM call failed: %s", exc)
+        raise HTTPException(status_code=502, detail=f"Export failed: {exc}") from exc
+
+    if raw.startswith("```"):
+        raw = _re.sub(r"^```[a-z]*\n?", "", raw)
+        raw = _re.sub(r"\n?```$", "", raw.strip())
+    if not raw:
+        raise HTTPException(status_code=502, detail="Export produced no output; try again.")
+    return ExportResponse(format=payload.format, filename=filename, language=language, content=raw)

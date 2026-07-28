@@ -8,7 +8,13 @@ import Button from "../components/shared/Button.jsx";
 import InsightsDeck from "../components/insights/InsightsDeck.jsx";
 import FileDiffSummary from "../components/insights/FileDiffSummary.jsx";
 import ShareAndGitCard from "../components/insights/ShareAndGitCard.jsx";
-import { getApiBaseUrl, getGeneration, postFeedback, refineGeneration } from "../services/api.js";
+import {
+  getApiBaseUrl,
+  getGeneration,
+  postFeedback,
+  refineGeneration,
+  exportGeneration,
+} from "../services/api.js";
 import CostBreakdown from "../components/insights/CostBreakdown.jsx";
 import HandoffPanel from "../components/insights/HandoffPanel.jsx";
 import DeployPanel from "../components/insights/DeployPanel.jsx";
@@ -349,6 +355,30 @@ export default function Result() {
     }
   };
 
+  // Export to another IaC format (CloudFormation YAML / AWS CDK TypeScript).
+  const [exporting, setExporting] = useState(null); // "cloudformation" | "cdk" | null
+  const onExport = async (format) => {
+    if (exporting) return;
+    setExporting(format);
+    setRefineErr(null);
+    try {
+      const res = await exportGeneration(id, format);
+      const blob = new Blob([res.content], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = res.filename || (format === "cdk" ? "stack.ts" : "template.yaml");
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setRefineErr(e.message || "Export failed — try again.");
+    } finally {
+      setExporting(null);
+    }
+  };
+
   useEffect(() => {
     // Navigated here with the result already in state (e.g. after a refine) —
     // sync it so the page reflects the new generation without a refetch.
@@ -516,6 +546,26 @@ export default function Result() {
           </Button>
         </div>
         {refineErr && <p className="mt-2 text-xs text-rose-300">{refineErr}</p>}
+
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/10 pt-3">
+          <span className="text-xs text-slate-400">Export as:</span>
+          <button
+            type="button"
+            onClick={() => onExport("cloudformation")}
+            disabled={!!exporting}
+            className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-200 hover:bg-white/10 disabled:opacity-50"
+          >
+            {exporting === "cloudformation" ? "Converting…" : "CloudFormation (YAML)"}
+          </button>
+          <button
+            type="button"
+            onClick={() => onExport("cdk")}
+            disabled={!!exporting}
+            className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-200 hover:bg-white/10 disabled:opacity-50"
+          >
+            {exporting === "cdk" ? "Converting…" : "AWS CDK (TypeScript)"}
+          </button>
+        </div>
       </section>
 
       {/* ── Dashboard KPI stat cards ─────────────────────────────────────── */}

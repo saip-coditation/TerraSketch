@@ -121,6 +121,17 @@ export async function refineGeneration(generationId, instruction) {
   return data;
 }
 
+// Export a generation's Terraform as another IaC format.
+// format: "cloudformation" | "cdk". Returns { format, filename, language, content }.
+export async function exportGeneration(generationId, format) {
+  const { data } = await api.post(
+    `/api/generation/${generationId}/export`,
+    { format },
+    { timeout: LLM_TIMEOUT_MS }
+  );
+  return data;
+}
+
 export async function editGenerationIR(generationId, ir) {
   const { data } = await api.post(`/api/v2/generation/${generationId}/ir/edit`, ir);
   return data;
