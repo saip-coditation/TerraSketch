@@ -35,6 +35,10 @@ from app.services.templates.aws_serverless import (
     canonical_serverless_resources_list,
     maybe_replace_with_canonical_serverless,
 )
+from app.services.templates.aws_static_site import (
+    canonical_static_site_resources_list,
+    maybe_replace_with_canonical_static_site,
+)
 from app.services.templates.generation_hints import build_generation_hints
 from app.services.terraform.cli import run_terraform_fmt_check, run_terraform_validate
 from app.services.terraform.file_diff import summarize_file_diffs
@@ -110,6 +114,16 @@ class GenerationPipeline:
             )
             if canon_notes:
                 canon_kind = "serverless"
+        # If not the microservice or serverless, try a pure static site.
+        if not canon_notes:
+            files, canon_notes = maybe_replace_with_canonical_static_site(
+                files=files,
+                cloud_provider=cloud_provider,
+                resources_identified=ident,
+                environment=environment,
+            )
+            if canon_notes:
+                canon_kind = "static_site"
         assumptions = assumptions + canon_notes
         resources_identified = ident
         usage_instructions = ai_output.usage_instructions
@@ -133,6 +147,14 @@ class GenerationPipeline:
                 "produces a live API endpoint (see the api_endpoint output). "
                 "Everything has a default; edit terraform.tfvars only to customize. "
                 "Run: terraform init && terraform apply."
+            )
+        elif canon_kind == "static_site":
+            resources_identified = canonical_static_site_resources_list()
+            usage_instructions = (
+                "Canonical static-site template applied: a private S3 bucket (OAC) behind "
+                "CloudFront over HTTPS. Ships a default index.html, so the cloudfront_domain_name "
+                "output serves a live page right after apply. Upload your own build to the bucket "
+                "to replace it. Run: terraform init && terraform apply."
             )
         return files, assumptions, resources_identified, usage_instructions, canon_applied
 
