@@ -12,7 +12,6 @@ import {
   getApiBaseUrl,
   getGeneration,
   postFeedback,
-  refineGeneration,
   exportGeneration,
 } from "../services/api.js";
 import CostBreakdown from "../components/insights/CostBreakdown.jsx";
@@ -333,34 +332,13 @@ export default function Result() {
   const [comment, setComment] = useState("");
   const [feedbackType, setFeedbackType] = useState("");
   const [feedbackState, setFeedbackState] = useState("idle");
-  // AI Refine: edit the generated Terraform from a plain-English instruction.
-  const [refineText, setRefineText] = useState("");
-  const [refining, setRefining] = useState(false);
-  const [refineErr, setRefineErr] = useState(null);
-
-  const onRefine = async () => {
-    const instruction = refineText.trim();
-    if (!instruction || refining) return;
-    setRefining(true);
-    setRefineErr(null);
-    try {
-      const result = await refineGeneration(id, instruction);
-      setData(result);
-      setFiles(result.files || {});
-      setRefineText("");
-    } catch (e) {
-      setRefineErr(e.message || "Refine failed — try rephrasing.");
-    } finally {
-      setRefining(false);
-    }
-  };
-
   // Export to another IaC format (CloudFormation YAML / AWS CDK TypeScript).
   const [exporting, setExporting] = useState(null); // "cloudformation" | "cdk" | null
+  const [exportErr, setExportErr] = useState(null);
   const onExport = async (format) => {
     if (exporting) return;
     setExporting(format);
-    setRefineErr(null);
+    setExportErr(null);
     try {
       const res = await exportGeneration(id, format);
       const blob = new Blob([res.content], { type: "text/plain;charset=utf-8" });
@@ -373,7 +351,7 @@ export default function Result() {
       a.remove();
       URL.revokeObjectURL(url);
     } catch (e) {
-      setRefineErr(e.message || "Export failed — try again.");
+      setExportErr(e.message || "Export failed — try again.");
     } finally {
       setExporting(null);
     }
@@ -525,30 +503,13 @@ export default function Result() {
         </div>
       </header>
 
-      {/* ── AI Refine: edit the Terraform in plain English ───────────────── */}
-      <section className="mb-6 rounded-xl border border-brand-400/25 bg-brand-400/5 p-4">
-        <label className="block text-sm font-semibold text-slate-100">✨ Refine with AI</label>
+      {/* ── Export to another IaC format ─────────────────────────────────── */}
+      <section className="mb-6 rounded-xl border border-white/10 bg-white/5 p-4">
+        <span className="block text-sm font-semibold text-slate-100">Export</span>
         <p className="mt-1 text-xs text-slate-400">
-          Describe a change in plain English — e.g. “make the database bigger”, “add a Redis cache”,
-          or “switch instances to t3.large”. It rewrites the Terraform in place.
+          Download the same infrastructure in another IaC format.
         </p>
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-          <input
-            value={refineText}
-            onChange={(e) => setRefineText(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && onRefine()}
-            placeholder="e.g. add a CloudWatch alarm on the database"
-            disabled={refining}
-            className="flex-1 rounded-lg border border-white/10 bg-slate-900/60 px-3 py-2 text-sm text-slate-100 outline-none focus:border-brand-400/60 disabled:opacity-60"
-          />
-          <Button type="button" onClick={onRefine} disabled={refining || !refineText.trim()} className="py-2">
-            {refining ? "Refining…" : "Refine"}
-          </Button>
-        </div>
-        {refineErr && <p className="mt-2 text-xs text-rose-300">{refineErr}</p>}
-
-        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/10 pt-3">
-          <span className="text-xs text-slate-400">Export as:</span>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => onExport("cloudformation")}
@@ -566,6 +527,7 @@ export default function Result() {
             {exporting === "cdk" ? "Converting…" : "AWS CDK (TypeScript)"}
           </button>
         </div>
+        {exportErr && <p className="mt-2 text-xs text-rose-300">{exportErr}</p>}
       </section>
 
       {/* ── Dashboard KPI stat cards ─────────────────────────────────────── */}

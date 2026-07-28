@@ -111,16 +111,6 @@ export async function applyGenerationConfig(generationId, answers) {
   return data;
 }
 
-// Modify a generation's Terraform from a plain-English instruction (AI Refine).
-export async function refineGeneration(generationId, instruction) {
-  const { data } = await api.post(
-    `/api/generation/${generationId}/refine`,
-    { instruction },
-    { timeout: LLM_TIMEOUT_MS }
-  );
-  return data;
-}
-
 // Export a generation's Terraform as another IaC format.
 // format: "cloudformation" | "cdk". Returns { format, filename, language, content }.
 export async function exportGeneration(generationId, format) {
