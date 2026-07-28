@@ -30,6 +30,10 @@ from app.services.templates.aws_microservice import (
     maybe_replace_with_canonical_microservice,
     microservice_config_questions,
 )
+from app.services.templates.aws_serverless import (
+    canonical_serverless_resources_list,
+    maybe_replace_with_canonical_serverless,
+)
 from app.services.templates.generation_hints import build_generation_hints
 from app.services.terraform.cli import run_terraform_fmt_check, run_terraform_validate
 from app.services.terraform.file_diff import summarize_file_diffs
@@ -87,17 +91,29 @@ class GenerationPipeline:
     ) -> tuple[dict[str, str], list[str], list[str], str | None, bool]:
         if not get_settings().CANONICAL_OVERRIDE_ENABLED:
             return files, assumptions, list(ai_output.resources_identified or []), ai_output.usage_instructions, False
+        ident = list(ai_output.resources_identified or [])
         files, canon_notes = maybe_replace_with_canonical_microservice(
             files=files,
             cloud_provider=cloud_provider,
-            resources_identified=list(ai_output.resources_identified or []),
+            resources_identified=ident,
             environment=environment,
         )
+        canon_kind = "microservice" if canon_notes else None
+        # If it wasn't the microservice, try the serverless pattern.
+        if not canon_notes:
+            files, canon_notes = maybe_replace_with_canonical_serverless(
+                files=files,
+                cloud_provider=cloud_provider,
+                resources_identified=ident,
+                environment=environment,
+            )
+            if canon_notes:
+                canon_kind = "serverless"
         assumptions = assumptions + canon_notes
-        resources_identified = list(ai_output.resources_identified or [])
+        resources_identified = ident
         usage_instructions = ai_output.usage_instructions
         canon_applied = bool(canon_notes)
-        if canon_applied:
+        if canon_kind == "microservice":
             resources_identified = canonical_resources_list()
             usage_instructions = (
                 "Canonical template applied for full diagram fidelity. The stack is self-contained "
@@ -107,6 +123,15 @@ class GenerationPipeline:
                 "CloudFront default behavior → S3 (OAC). Paths matching api_path_pattern (default /api/*) "
                 "→ ALB → ECS. ElastiCache and Aurora are reachable only from ECS security groups. "
                 "Run: terraform init && terraform plan."
+            )
+        elif canon_kind == "serverless":
+            resources_identified = canonical_serverless_resources_list()
+            usage_instructions = (
+                "Canonical serverless template applied: API Gateway (HTTP) → Lambda → DynamoDB. "
+                "Self-contained and deployable — the Lambda ships an inline handler, so apply "
+                "produces a live API endpoint (see the api_endpoint output). "
+                "Everything has a default; edit terraform.tfvars only to customize. "
+                "Run: terraform init && terraform apply."
             )
         return files, assumptions, resources_identified, usage_instructions, canon_applied
 
@@ -411,7 +436,11 @@ async def post_generate(
         resp.token_usage = ai_output.token_usage
         # Surface the config MCQs for the canonical microservice so the UI can
         # let the user refine size/scaling/logging/backups (unless already answered).
-        if result.canon_applied and not payload.config_answers:
+        if (
+            result.canon_applied
+            and not payload.config_answers
+            and "aws_ecs_service" in (result.files.get("main.tf") or "")
+        ):
             resp.clarifying_questions = microservice_config_questions()
         return resp
 
