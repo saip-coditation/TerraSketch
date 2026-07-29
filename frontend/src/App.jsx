@@ -8,6 +8,7 @@ import ReverseDiagram from "./pages/ReverseDiagram.jsx";
 import Result from "./pages/Result.jsx";
 import ResultV2 from "./pages/ResultV2.jsx";
 import History from "./pages/History.jsx";
+import Compare from "./pages/Compare.jsx";
 import Docs from "./pages/Docs.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import SignIn from "./pages/SignIn.jsx";
@@ -33,6 +34,7 @@ export default function App() {
           <Route path="/releases" element={<Releases />} />
           <Route path="/review" element={<Review />} />
           <Route path="/history" element={<History />} />
+          <Route path="/compare" element={<Compare />} />
           <Route path="/docs" element={<Docs />} />
           <Route path="/signin" element={<SignIn />} />
           <Route path="*" element={<NotFound />} />

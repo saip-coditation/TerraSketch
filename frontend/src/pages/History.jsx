@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { getHistory } from "../services/api.js";
 import { getSessionId } from "../utils/sessionId.js";
@@ -21,10 +21,25 @@ const PROVIDER_GRADIENT = {
 
 export default function History() {
   const { user, ready } = useAuth();
+  const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [fetching, setFetching] = useState(false);
   const [error, setError] = useState(null);
   const loading = !ready || fetching;
+
+  // Compare mode: pick exactly two generations to diff.
+  const [selected, setSelected] = useState([]); // generation_ids, max 2 (oldest drops)
+  const toggleSelect = (genId) => {
+    setSelected((prev) => {
+      if (prev.includes(genId)) return prev.filter((x) => x !== genId);
+      return [...prev, genId].slice(-2);
+    });
+  };
+  const compareSelected = () => {
+    if (selected.length === 2) {
+      navigate(`/compare?a=${selected[0]}&b=${selected[1]}`);
+    }
+  };
 
   useEffect(() => {
     if (!ready) return;
@@ -64,6 +79,12 @@ export default function History() {
         </Link>
       </header>
 
+      {items.length > 1 && (
+        <p className="mb-4 text-xs text-slate-500">
+          Tip: use the ✓ on two cards to compare their Terraform side by side.
+        </p>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center gap-3 py-16 text-slate-300">
           <LoadingSpinner size={20} /> Loading history…
@@ -87,11 +108,27 @@ export default function History() {
           {items.map((it) => {
             const resources = it.resources_identified || [];
             const provider = it.cloud_provider;
+            const isSelected = selected.includes(it.generation_id);
             return (
-              <li key={it.generation_id}>
+              <li key={it.generation_id} className="relative">
+                <button
+                  type="button"
+                  onClick={() => toggleSelect(it.generation_id)}
+                  title={isSelected ? "Deselect" : "Select to compare"}
+                  aria-pressed={isSelected}
+                  className={`absolute right-3 top-3 z-10 grid h-6 w-6 place-items-center rounded-md border text-[11px] font-bold transition ${
+                    isSelected
+                      ? "border-brand-300 bg-brand-400 text-ink-900"
+                      : "border-white/20 bg-ink-900/70 text-transparent hover:border-brand-300/60 hover:text-slate-400"
+                  }`}
+                >
+                  ✓
+                </button>
                 <Link
                   to={`/result/${it.generation_id}`}
-                  className="card group flex h-full min-w-0 flex-col gap-4 p-5 transition hover:-translate-y-0.5 hover:border-brand-300/40 hover:bg-white/[0.08] hover:shadow-glow"
+                  className={`card group flex h-full min-w-0 flex-col gap-4 p-5 transition hover:-translate-y-0.5 hover:border-brand-300/40 hover:bg-white/[0.08] hover:shadow-glow ${
+                    isSelected ? "border-brand-300/50 ring-1 ring-brand-300/40" : ""
+                  }`}
                 >
                   <div className="flex min-w-0 items-start gap-3">
                     <span
@@ -167,6 +204,33 @@ export default function History() {
             );
           })}
         </ul>
+      )}
+
+      {selected.length > 0 && (
+        <div className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4">
+          <div className="flex items-center gap-3 rounded-full border border-white/10 bg-ink-900/95 px-4 py-2.5 shadow-glow backdrop-blur">
+            <span className="text-sm text-slate-300">
+              {selected.length === 1
+                ? "Select one more to compare"
+                : "2 selected"}
+            </span>
+            <button
+              type="button"
+              onClick={compareSelected}
+              disabled={selected.length !== 2}
+              className="btn-primary px-4 py-1.5 text-sm disabled:opacity-40"
+            >
+              Compare
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelected([])}
+              className="text-sm text-slate-400 hover:text-slate-200"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
       )}
     </main>
   );
