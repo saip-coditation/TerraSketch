@@ -15,6 +15,8 @@ import {
   postFeedback,
   exportGeneration,
   modularizeGeneration,
+  applyStandardTags,
+  scaffoldDownloadUrl,
 } from "../services/api.js";
 import CostBreakdown from "../components/insights/CostBreakdown.jsx";
 import HandoffPanel from "../components/insights/HandoffPanel.jsx";
@@ -378,6 +380,25 @@ export default function Result() {
     }
   };
 
+  // Inject consistent default_tags on the AWS provider.
+  const [tagging, setTagging] = useState(false);
+  const [tagNote, setTagNote] = useState(null);
+  const onApplyTags = async () => {
+    if (tagging) return;
+    setTagging(true);
+    setExportErr(null);
+    try {
+      const res = await applyStandardTags(id);
+      setData(res.generation);
+      setFiles(res.generation.files || {});
+      setTagNote((res.notes && res.notes[0]) || "Standard tags applied.");
+    } catch (e) {
+      setExportErr(e.message || "Tagging failed — try again.");
+    } finally {
+      setTagging(false);
+    }
+  };
+
   useEffect(() => {
     // Navigated here with the result already in state (e.g. after a refine) —
     // sync it so the page reflects the new generation without a refetch.
@@ -523,6 +544,52 @@ export default function Result() {
           </Link>
         </div>
       </header>
+
+      {/* ── Project scaffold ─────────────────────────────────────────────── */}
+      <section className="mb-6 rounded-xl border border-white/10 bg-white/5 p-4">
+        <span className="block text-sm font-semibold text-slate-100">Project scaffold</span>
+
+        <p className="mt-3 text-xs text-slate-400">
+          Tag every resource consistently via the AWS provider's default_tags
+          (Project / Environment / ManagedBy / CostCenter).
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onApplyTags}
+            disabled={tagging}
+            className="rounded-lg border border-brand-400/30 bg-brand-400/10 px-3 py-1.5 text-xs text-brand-100 hover:bg-brand-400/20 disabled:opacity-50"
+          >
+            {tagging ? "Applying…" : "Apply standard tags"}
+          </button>
+          {tagNote && <span className="text-xs text-emerald-300/90">{tagNote}</span>}
+        </div>
+
+        <p className="mt-4 text-xs text-slate-400">
+          Download a ready-to-push repo: all .tf files plus a README, .gitignore,
+          example tfvars, and a GitHub Actions workflow (fmt / init / validate).
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <a
+            href={scaffoldDownloadUrl(id, "bundle")}
+            className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-200 hover:bg-white/10"
+          >
+            Download repo (.zip)
+          </a>
+          <a
+            href={scaffoldDownloadUrl(id, "readme")}
+            className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-200 hover:bg-white/10"
+          >
+            README.md
+          </a>
+          <a
+            href={scaffoldDownloadUrl(id, "ci")}
+            className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-200 hover:bg-white/10"
+          >
+            CI workflow (.yml)
+          </a>
+        </div>
+      </section>
 
       {/* ── Organize & export ────────────────────────────────────────────── */}
       <section className="mb-6 rounded-xl border border-white/10 bg-white/5 p-4">

@@ -118,6 +118,18 @@ export async function modularizeGeneration(generationId) {
   return data;
 }
 
+// Inject consistent default_tags on the AWS provider. Returns { generation, notes }.
+export async function applyStandardTags(generationId, tags) {
+  const { data } = await api.post(`/api/generation/${generationId}/tags`, { tags: tags || null });
+  return data;
+}
+
+// Direct-download URLs for the repo scaffold (public GET endpoints, so a plain
+// <a download> works — no auth header needed). kind: "readme" | "ci" | "bundle".
+export function scaffoldDownloadUrl(generationId, kind) {
+  return `${getApiBaseUrl()}/api/generation/${generationId}/${kind}`;
+}
+
 // Export a generation's Terraform as another IaC format.
 // format: "cloudformation" | "cdk". Returns { format, filename, language, content }.
 export async function exportGeneration(generationId, format) {

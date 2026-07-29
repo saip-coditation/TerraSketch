@@ -8,7 +8,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -42,6 +42,9 @@ from app.services.templates.aws_static_site import (
 )
 from app.services.templates.generation_hints import build_generation_hints
 from app.services.terraform.cli import run_terraform_fmt_check, run_terraform_validate
+from app.services.scaffold import docs as scaffold_docs
+from app.services.scaffold.bundle import build_zip
+from app.services.scaffold.standard_tags import DEFAULT_TAGS, inject_default_tags
 from app.services.terraform.file_diff import summarize_file_diffs
 from app.services.terraform.split_files import split_by_concern
 from app.services.terraform.postprocess import postprocess_generated_files
@@ -564,6 +567,106 @@ async def modularize_generation(
     db.refresh(record)
     rid = getattr(request.state, "request_id", None)
     return ModularizeResponse(generation=_response_from_record(record, rid), notes=notes)
+
+
+# ── Repo scaffold: standard tags, README, CI workflow, .gitignore, tfvars, zip ──
+
+
+class TagsRequest(BaseModel):
+    tags: dict[str, str] | None = Field(
+        default=None,
+        description="Optional overrides merged over the standard tag set "
+        "(Project/Environment/ManagedBy/CostCenter).",
+    )
+
+
+class TagsResponse(BaseModel):
+    generation: GenerateResponse
+    notes: list[str]
+
+
+@router.post(
+    "/generation/{generation_id}/tags",
+    response_model=TagsResponse,
+    summary="Inject consistent default_tags on the AWS provider (no LLM re-run)",
+)
+async def apply_standard_tags(
+    generation_id: str,
+    payload: TagsRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> TagsResponse:
+    record = db.get(models.Generation, generation_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Generation not found")
+    tags = {**DEFAULT_TAGS, "Environment": record.environment or "dev", **(payload.tags or {})}
+    new_files, notes = inject_default_tags(record.generated_files or {}, tags)
+    record.generated_files = new_files
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    rid = getattr(request.state, "request_id", None)
+    return TagsResponse(generation=_response_from_record(record, rid), notes=notes)
+
+
+def _load_generation_or_404(generation_id: str, db: Session) -> models.Generation:
+    record = db.get(models.Generation, generation_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Generation not found")
+    return record
+
+
+@router.get(
+    "/generation/{generation_id}/readme",
+    summary="Download a generated README.md for the generation",
+)
+async def download_readme(generation_id: str, db: Session = Depends(get_db)) -> Response:
+    record = _load_generation_or_404(generation_id, db)
+    body = scaffold_docs.build_readme(
+        files=record.generated_files or {},
+        cloud_provider=record.cloud_provider or "aws",
+        environment=record.environment or "dev",
+        resources_identified=record.resources_identified or [],
+        diagram_match_percent=record.diagram_match_percent or 0,
+    )
+    return Response(
+        content=body,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="README.md"'},
+    )
+
+
+@router.get(
+    "/generation/{generation_id}/ci",
+    summary="Download a GitHub Actions workflow (fmt/init/validate) for the generation",
+)
+async def download_ci(generation_id: str, db: Session = Depends(get_db)) -> Response:
+    _load_generation_or_404(generation_id, db)
+    return Response(
+        content=scaffold_docs.CI_WORKFLOW,
+        media_type="text/yaml; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="terraform.yml"'},
+    )
+
+
+@router.get(
+    "/generation/{generation_id}/bundle",
+    summary="Download a ready-to-push repo zip (.tf + README + .gitignore + CI + tfvars)",
+)
+async def download_bundle(generation_id: str, db: Session = Depends(get_db)) -> Response:
+    record = _load_generation_or_404(generation_id, db)
+    data = build_zip(
+        files=record.generated_files or {},
+        cloud_provider=record.cloud_provider or "aws",
+        environment=record.environment or "dev",
+        resources_identified=record.resources_identified or [],
+        diagram_match_percent=record.diagram_match_percent or 0,
+    )
+    return Response(
+        content=data,
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="terrasketch-infra.zip"'},
+    )
 
 
 class ExportRequest(BaseModel):
