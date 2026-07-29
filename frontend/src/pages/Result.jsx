@@ -14,6 +14,7 @@ import {
   getGeneration,
   postFeedback,
   exportGeneration,
+  modularizeGeneration,
 } from "../services/api.js";
 import CostBreakdown from "../components/insights/CostBreakdown.jsx";
 import HandoffPanel from "../components/insights/HandoffPanel.jsx";
@@ -358,6 +359,25 @@ export default function Result() {
     }
   };
 
+  // Split the flat main.tf into per-concern files (network/compute/data/...).
+  const [splitting, setSplitting] = useState(false);
+  const [splitNote, setSplitNote] = useState(null);
+  const onModularize = async () => {
+    if (splitting) return;
+    setSplitting(true);
+    setExportErr(null);
+    try {
+      const res = await modularizeGeneration(id);
+      setData(res.generation);
+      setFiles(res.generation.files || {});
+      setSplitNote((res.notes && res.notes[0]) || "Reorganized into per-concern files.");
+    } catch (e) {
+      setExportErr(e.message || "Split failed — try again.");
+    } finally {
+      setSplitting(false);
+    }
+  };
+
   useEffect(() => {
     // Navigated here with the result already in state (e.g. after a refine) —
     // sync it so the page reflects the new generation without a refetch.
@@ -504,13 +524,30 @@ export default function Result() {
         </div>
       </header>
 
-      {/* ── Export to another IaC format ─────────────────────────────────── */}
+      {/* ── Organize & export ────────────────────────────────────────────── */}
       <section className="mb-6 rounded-xl border border-white/10 bg-white/5 p-4">
-        <span className="block text-sm font-semibold text-slate-100">Export</span>
-        <p className="mt-1 text-xs text-slate-400">
-          Download the same infrastructure in another IaC format.
+        <span className="block text-sm font-semibold text-slate-100">Organize & export</span>
+
+        <p className="mt-3 text-xs text-slate-400">
+          Reorganize the flat main.tf into per-concern files (network / compute / data / …).
+          Everything stays in one root module, so the plan is unchanged — it's purely for readability.
         </p>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onModularize}
+            disabled={splitting}
+            className="rounded-lg border border-brand-400/30 bg-brand-400/10 px-3 py-1.5 text-xs text-brand-100 hover:bg-brand-400/20 disabled:opacity-50"
+          >
+            {splitting ? "Splitting…" : "Split into files by concern"}
+          </button>
+          {splitNote && <span className="text-xs text-emerald-300/90">{splitNote}</span>}
+        </div>
+
+        <p className="mt-4 text-xs text-slate-400">
+          Or download the same infrastructure in another IaC format.
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => onExport("cloudformation")}

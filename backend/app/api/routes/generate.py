@@ -43,6 +43,7 @@ from app.services.templates.aws_static_site import (
 from app.services.templates.generation_hints import build_generation_hints
 from app.services.terraform.cli import run_terraform_fmt_check, run_terraform_validate
 from app.services.terraform.file_diff import summarize_file_diffs
+from app.services.terraform.split_files import split_by_concern
 from app.services.terraform.postprocess import postprocess_generated_files
 
 logger = logging.getLogger(__name__)
@@ -536,6 +537,33 @@ async def apply_generation_config(
     db.refresh(record)
     rid = getattr(request.state, "request_id", None)
     return _response_from_record(record, rid)
+
+
+class ModularizeResponse(BaseModel):
+    generation: GenerateResponse
+    notes: list[str]
+
+
+@router.post(
+    "/generation/{generation_id}/modularize",
+    response_model=ModularizeResponse,
+    summary="Reorganize a generation's main.tf into per-concern files (no LLM re-run)",
+)
+async def modularize_generation(
+    generation_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> ModularizeResponse:
+    record = db.get(models.Generation, generation_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Generation not found")
+    new_files, notes = split_by_concern(record.generated_files or {})
+    record.generated_files = new_files
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    rid = getattr(request.state, "request_id", None)
+    return ModularizeResponse(generation=_response_from_record(record, rid), notes=notes)
 
 
 class ExportRequest(BaseModel):

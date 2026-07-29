@@ -111,6 +111,13 @@ export async function applyGenerationConfig(generationId, answers) {
   return data;
 }
 
+// Reorganize a generation's flat main.tf into per-concern files (network/compute/
+// data/...). No LLM re-run. Returns { generation, notes }.
+export async function modularizeGeneration(generationId) {
+  const { data } = await api.post(`/api/generation/${generationId}/modularize`);
+  return data;
+}
+
 // Export a generation's Terraform as another IaC format.
 // format: "cloudformation" | "cdk". Returns { format, filename, language, content }.
 export async function exportGeneration(generationId, format) {
