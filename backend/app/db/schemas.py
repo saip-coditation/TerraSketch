@@ -100,6 +100,12 @@ class GenerateResponse(BaseModel):
     improvement_advice: list[str] = []
     security_warnings: list[str] = []
     terraform_validation: dict[str, Any] | None = None
+    lint_findings: list[dict[str, str]] = Field(
+        default=[],
+        description="Deterministic static-lint findings on the generated HCL "
+        "(severity/rule/message/file). Always computed — unlike terraform_validation, "
+        "which needs the terraform CLI and is skipped when it's unavailable.",
+    )
     file_diff_summary: dict[str, Any] | None = None
     confidence_scores: dict[str, int] = {}
     placeholders: list[str] = []

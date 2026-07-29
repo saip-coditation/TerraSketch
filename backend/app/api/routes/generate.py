@@ -25,6 +25,7 @@ from app.services.quality.diagram_match import (
 )
 from app.services.quality.secret_scan import scan_generated_files
 from app.services.quality.security_scan import scan_best_practices
+from app.services.quality.tf_lint import lint_terraform
 from app.services.templates.aws_microservice import (
     apply_microservice_config_answers,
     canonical_resources_list,
@@ -317,6 +318,7 @@ def _response_from_record(record: models.Generation, request_id: str | None) -> 
         improvement_advice=record.improvement_advice or [],
         security_warnings=record.security_warnings or [],
         terraform_validation=record.terraform_validation,
+        lint_findings=lint_terraform(record.generated_files or {}),
         file_diff_summary=record.file_diff_summary,
         confidence_scores=record.confidence_scores or {},
         placeholders=record.placeholders or [],

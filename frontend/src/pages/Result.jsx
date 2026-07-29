@@ -6,6 +6,7 @@ import AssumptionsBox from "../components/AssumptionsBox.jsx";
 import LoadingSpinner from "../components/shared/LoadingSpinner.jsx";
 import Button from "../components/shared/Button.jsx";
 import InsightsDeck from "../components/insights/InsightsDeck.jsx";
+import LintPanel from "../components/insights/LintPanel.jsx";
 import FileDiffSummary from "../components/insights/FileDiffSummary.jsx";
 import ShareAndGitCard from "../components/insights/ShareAndGitCard.jsx";
 import {
@@ -664,6 +665,9 @@ export default function Result() {
             files={data.files || {}}
             securityWarnings={data.security_warnings || []}
           />
+
+          {/* Static lint (always available; no terraform CLI needed) */}
+          <LintPanel findings={data.lint_findings || []} />
 
           {/* Insights */}
           <InsightsDeck
